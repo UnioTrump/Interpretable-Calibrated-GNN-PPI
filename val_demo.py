@@ -23,13 +23,6 @@ def create_model(dataset, device):
     max_atom_nodes = max(samples['atom_graph'].x.size(0) for samples in dataset.samples)
     max_residue_nodes = max(samples['residue_graph'].x.size(0) for samples in dataset.samples)
 
-    # 获取特征维度
-    atom_in_channels = dataset.samples[0]['atom_graph'].x.size(1)
-    residue_in_channels = dataset.samples[0]['residue_graph'].x.size(1)
-
-    print(f"创建模型: 原子节点={max_atom_nodes}, 残基节点={max_residue_nodes}")
-    print(f"原子特征维度={atom_in_channels}, 残基特征维度={residue_in_channels}")
-
     # 创建模型
     model = HierarchicalGNN(
         atom_num_nodes=max_atom_nodes,
