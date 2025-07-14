@@ -74,20 +74,13 @@ class PPI(ScalableGNN):
         # 最后一层GATConv
         x = F.dropout(x, p=self.dropout, training=self.training)
         x = self.convs[-1]((x, x[:adj_t.size(0)]), adj_t)
-        '''
-        att = self.v(torch.tanh(self.att(x)))
-        att_score = F.softmax(att, dim=1)
-        scored_out = x * att_score
-        return scored_out'''
 
-        return x
-
-    @torch.no_grad()
-    def forward_layer(self, layer, x, adj_t, state):
-        x = F.dropout(x, p=self.dropout, training=self.training)
-        x = self.convs[layer]((x, x[:adj_t.size(0)]), adj_t)
         att = self.v(torch.tanh(self.att(x)))
         att_score = F.softmax(att, dim=1)
         scored_out = x * att_score
 
         return scored_out
+
+    @torch.no_grad()
+    def forward_layer(self, layer, x, adj_t, state):
+        raise NotImplementedError

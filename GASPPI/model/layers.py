@@ -260,9 +260,6 @@ class HierarchicalGNN(nn.Module):
         residue_x = residue_x.to(target_device)
         a2r_map = a2r_map.to(target_device)
         
-        # 存储每个块的输出用于最终拼接
-        all_outputs = []
-        
         # 当前的原子和残基输入
         current_atom_x = atom_x
         current_residue_x = residue_x
