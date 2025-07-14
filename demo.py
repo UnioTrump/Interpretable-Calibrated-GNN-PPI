@@ -115,12 +115,12 @@ def train(run, model, train_proteins, optimizer, grad_norm=None, delta=0.5):
     criterion = WeightedCrossEntropy(pos_wt=1/POS_WEIGHT, device=device)
     # 移除内部进度条
     for train_p in train_proteins:
-        train_p_a_node = torch.FloatTensor(train_p['atom_graph_node']).cuda()
-        train_p_a_edge = torch.LongTensor(train_p['atom_graph_edge']).cuda()
-        train_p_r_node = torch.FloatTensor(train_p['residue_graph_node']).cuda()
-        train_p_r_edge = torch.LongTensor(train_p['residue_graph_edge']).cuda()
-        targets = torch.LongTensor(train_p['label']).cuda()
-        a2r_map = torch.tensor(train_p['a2r_map']).cuda()
+        train_p_a_node = torch.FloatTensor(train_p['atom_graph_node']).device
+        train_p_a_edge = torch.LongTensor(train_p['atom_graph_edge']).device
+        train_p_r_node = torch.FloatTensor(train_p['residue_graph_node']).device
+        train_p_r_edge = torch.LongTensor(train_p['residue_graph_edge']).device
+        targets = torch.LongTensor(train_p['label']).device
+        a2r_map = torch.tensor(train_p['a2r_map']).device
         '''
         mask = batch['train_mask']
         if mask.sum() == 0:

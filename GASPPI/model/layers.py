@@ -254,12 +254,6 @@ class HierarchicalGNN(nn.Module):
         Returns:
             param out: 最终输出分类值
         """
-        # 确保输入在同一设备上
-        target_device = self._device
-        atom_x = atom_x.to(target_device)
-        residue_x = residue_x.to(target_device)
-        a2r_map = a2r_map.to(target_device)
-        
         # 当前的原子和残基输入
         current_atom_x = atom_x
         current_residue_x = residue_x

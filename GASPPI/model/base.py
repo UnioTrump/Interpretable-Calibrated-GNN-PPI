@@ -142,26 +142,6 @@ class ScalableGNN(torch.nn.Module):
             count （Tensor，可选）：连续内存布局内的微型批处理节点数。（默认： ：obj：'None'）
             loader （EvalSubgraphLoader，可选）：一个子图加载器，用于在逐层布局中评估给定的 GNN。
         '''
-        # 确保输入张量都在正确的设备上
-        target_device = self.device
-        if x is not None:
-            x = x.to(target_device)
-        if n_id is not None:
-            n_id = n_id.to(target_device)
-        if offset is not None:
-            offset = offset.to(target_device)
-        if count is not None:
-            count = count.to(target_device)
-        # SparseTensor 需要特殊处理，因为它不是标准的torch.Tensor
-        # adj_t通常已经在GPU上了，但如果不是，我们需要确保它在正确的设备上
-        # 注意：SparseTensor的to()方法可能与标准Tensor不同
-        if adj_t is not None and hasattr(adj_t, 'device') and str(adj_t.device()) != str(target_device):
-            print(f"Warning: adj_t is on {adj_t.device()}, moving to {target_device}")
-            try:
-                adj_t = adj_t.to(target_device)
-            except:
-                print("Failed to move adj_t, this may cause device mismatch errors")
-
         # We only perform asynchronous history transfer in case the following
         # conditions are met:
         self._async = (self.pool is not None and batch_size is not None
