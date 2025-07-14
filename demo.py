@@ -27,9 +27,9 @@ raw_dict = load_data('/gz-data/train355-r5.5-a2.3.pkl')
 full_dataset = ProteinData(raw_dict)
 
 # 划分数据集
-def split_dataset(dataset, train_ratio=0.8, val_ratio=0.2, test_ratio=0, random_seed=123):
-    """将数据集分割为训练集、验证集和测试集"""
-    assert train_ratio + val_ratio + test_ratio == 1.0, "比例之和必须为1"
+def split_dataset(dataset, train_ratio=0.8, val_ratio=0.2, random_seed=123):
+    """将数据集分割为训练集、验证集"""
+    assert train_ratio + val_ratio == 1.0, "比例之和必须为1"
     
     # 设置随机种子以确保可重现性
     torch.manual_seed(random_seed)
@@ -47,12 +47,10 @@ def split_dataset(dataset, train_ratio=0.8, val_ratio=0.2, test_ratio=0, random_
     # 获取各部分索引
     train_indices = indices[:train_end]
     val_indices = indices[train_end:val_end]
-    test_indices = indices[val_end:]
     
     # 创建子数据集
     train_dataset = [dataset[i] for i in train_indices]
     val_dataset = [dataset[i] for i in val_indices]
-    test_dataset = [dataset[i] for i in test_indices]
     
     # 创建新的数据集实例
     train_set = ProteinData.__new__(ProteinData)
@@ -60,20 +58,15 @@ def split_dataset(dataset, train_ratio=0.8, val_ratio=0.2, test_ratio=0, random_
     
     val_set = ProteinData.__new__(ProteinData)
     val_set.samples = val_dataset
-    
-    test_set = ProteinData.__new__(ProteinData)
-    test_set.samples = test_dataset
-    
-    print(f"数据集分割完成: 训练集 {len(train_set)}，验证集 {len(val_set)}，测试集 {len(test_set)}")
-    return train_set, val_set, test_set
+    print(f"数据集分割完成: 训练集 {len(train_set)}，验证集 {len(val_set)}")
+    return train_set, val_set
 
 # 划分数据集
-train_dataset, val_dataset, test_dataset = split_dataset(full_dataset)
+train_dataset, val_dataset = split_dataset(full_dataset)
 
 # 创建数据加载器
-train_loader = PPIDataLoader(train_dataset, batch_size=8, shuffle=True)
-val_loader = PPIDataLoader(val_dataset, batch_size=8, shuffle=True)
-test_loader = PPIDataLoader(test_dataset, batch_size=8, shuffle=False)
+train_loader = PPIDataLoader(train_dataset, batch_size=16, shuffle=True)
+val_loader = PPIDataLoader(val_dataset, batch_size=16, shuffle=True)
 
 # 计算数据集中原子和残基的最大数量
 max_atom_nodes = max([sample['atom_graph'].x.size(0) for sample in full_dataset.samples])       # 13512
@@ -97,7 +90,7 @@ model = HierarchicalGNN(
     device=device
 ).to(device)
 
-POS_WEIGHT = torch.tensor(np.sqrt(5.39734))  # 定义全局正样本权重，提升稳定性.这是全部样本的正负样本比值
+POS_WEIGHT = 1 / torch.tensor(np.sqrt(5.39734))  # 定义全局正样本权重，提升稳定性.这是全部样本的正负样本比值
 def train(run, model, loader, optimizer, grad_norm=None, delta=0.5):
     model.train()
 
@@ -207,10 +200,10 @@ model_dir = './checkpoints'
 os.makedirs(model_dir, exist_ok=True)
 
 # 初始化优化器
-optimizer = torch.optim.SGD(model.parameters(), lr=1e-3, momentum=0.8, weight_decay=1e-3, nesterov=True)
+optimizer = torch.optim.SGD(model.parameters(), lr=1e-3, momentum=0.9, weight_decay=1e-3, nesterov=True)
 # 使用tqdm创建整体训练进度条
 print("开始训练...")
-epoch_pbar = tqdm(range(num_epochs), desc="训练进度", ncols=200)
+epoch_pbar = tqdm(range(num_epochs), desc="训练进度", ncols=160)
 for epoch in epoch_pbar:
     # 训练
     start_time = time.time()
