@@ -109,18 +109,24 @@ POS_WEIGHT = 1 / torch.tensor(np.sqrt(5.39734))  # 定义全局正样本权重�
 def train(run, model, train_proteins, optimizer, grad_norm=None, delta=0.5):
     model.train()
 
-    b_loss = 0
     e_loss = 0
     '''还未使用POS_WEIGHT'''
     criterion = WeightedCrossEntropy(pos_wt=1/POS_WEIGHT, device=device)
     # 移除内部进度条
     for train_p in train_proteins:
-        train_p_a_node = torch.FloatTensor(train_p['atom_graph_node']).device
-        train_p_a_edge = torch.LongTensor(train_p['atom_graph_edge']).device
-        train_p_r_node = torch.FloatTensor(train_p['residue_graph_node']).device
-        train_p_r_edge = torch.LongTensor(train_p['residue_graph_edge']).device
-        targets = torch.LongTensor(train_p['label']).device
-        a2r_map = torch.tensor(train_p['a2r_map']).device
+        train_p_a_node = torch.FloatTensor(train_p['atom_graph_node'])
+        train_p_a_edge = torch.LongTensor(train_p['atom_graph_edge'])
+        train_p_r_node = torch.FloatTensor(train_p['residue_graph_node'])
+        train_p_r_edge = torch.LongTensor(train_p['residue_graph_edge'])
+        targets = torch.LongTensor(train_p['label'])
+        a2r_map = torch.tensor(train_p['a2r_map'])
+
+        train_p_r_node = train_p_r_node.to(device)
+        train_p_r_edge = train_p_r_edge.to(device)
+        targets = targets.to(device)
+        train_p_a_node = train_p_a_node.to(device)
+        train_p_a_edge = train_p_a_edge.to(device)
+        a2r_map = a2r_map.to(device)
         '''
         mask = batch['train_mask']
         if mask.sum() == 0:
@@ -163,12 +169,19 @@ def test(model, val_proteins):
     all_probs, all_targets = [], []
 
     for val_p in val_proteins:
-        val_p_a_node = torch.FloatTensor(val_p['atom_graph_node']).cuda()
-        val_p_a_edge = torch.LongTensor(val_p['atom_graph_edge']).cuda()
-        val_p_r_node = torch.FloatTensor(val_p['residue_graph_node']).cuda()
-        val_p_r_edge = torch.LongTensor(val_p['residue_graph_edge']).cuda()
-        targets = torch.LongTensor(val_p['label']).cuda()
-        a2r_map = torch.tensor(val_p['a2r_map']).cuda()
+        val_p_a_node = torch.FloatTensor(val_p['atom_graph_node'])
+        val_p_a_edge = torch.LongTensor(val_p['atom_graph_edge'])
+        val_p_r_node = torch.FloatTensor(val_p['residue_graph_node'])
+        val_p_r_edge = torch.LongTensor(val_p['residue_graph_edge'])
+        targets = torch.LongTensor(val_p['label'])
+        a2r_map = torch.tensor(val_p['a2r_map'])
+
+        val_p_r_node = val_p_r_node.to(device)
+        val_p_r_edge = val_p_r_edge.to(device)
+        targets = targets.to(device)
+        val_p_a_node = val_p_a_node.to(device)
+        val_p_a_edge = val_p_a_edge.to(device)
+        a2r_map = a2r_map.to(device)
 
         # 前向传播
         optimizer.zero_grad()
