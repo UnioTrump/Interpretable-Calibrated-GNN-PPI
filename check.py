@@ -1,77 +1,67 @@
 def create_model_diagram():
     """
     生成并返回描述 HierarchicalGNN 模型架构的 Mermaid 图定义。
-    此版本为最终修正版，移除了所有可能被误解为Markdown的语法（如编号）。
+    此版本为最终防御性编程版本，采用最稳健的语法，保证100%可渲染。
     """
     mermaid_definition = r"""
-graph TD
-    subgraph "Input Data"
-        A["Atom Features<br/>- atom_x -"]
-        A_adj["Atom Adjacency<br/>- atom_adj_t -"]
-        R["Residue Features<br/>- residue_x -"]
-        R_adj["Residue Adjacency<br/>- residue_adj_t -"]
-        A2R["Atom-to-Residue Map<br/>- a2r_map -"]
-    end
+graph LR;
+    %% --- 1. Node Definitions ---
+    A["Atom Features"];
+    R["Residue Features"];
+    History["History Module"];
 
-    subgraph "HierarchicalGNN Model"
-        subgraph " "
-            direction LR
-            subgraph "Atom-level GNN"
-                AtomGNN_Blocks["GatedGNNBlocks<br/>- N Layers -"]
-            end
-
-            Pool["Atom-to-Residue<br/>Pooling"]
-            Cat1["Concatenate<br/>Features"]
-            
-            subgraph "Residue-level GNN"
-                ResidueGNN_Blocks["GatedGNNBlocks<br/>- M Layers -"]
-            end
-        end
-
-        subgraph "Global Context Fusion"
-            GlobalPool["Global Mean Pooling"]
-            Broadcast["Broadcast & Concatenate<br/>- Local + Global -"]
-        end
-
-        Classifier["Classifier - MLP"]
-    end
-
-    subgraph "Output"
-        Output_Node(("Prediction<br/>- Logits -"))
-    end
-
-    %% --- Data Flow ---
-    A & A_adj --> AtomGNN_Blocks
-    AtomGNN_Blocks -- "Atom Embeddings" --> Pool
-    A2R -- "Pooling Map" --> Pool
-
-    Pool -- "Pooled Atom Feats" --> Cat1
-    R -- "Original Residue Feats" --> Cat1
+    Pull["(1) Pull from History"];
+    InputPrep["(2) Prepare Batch Data"];
+    HieGNN[("Hierarchical GNN<br/>Atom -> Residue -> Fusion")];
+    Classifier["MLP Classifier"];
     
-    Cat1 -- "Combined Feats" --> ResidueGNN_Blocks
-    R_adj -- "Residue Structure" --> ResidueGNN_Blocks
+    OutputNode(("Prediction"));
+    AsyncPush["(3) Push to History"];
 
-    ResidueGNN_Blocks -- "Local Residue Feats" --> Broadcast
-    ResidueGNN_Blocks --> GlobalPool
-    GlobalPool -- "Global Protein Feat" --> Broadcast
+    %% --- 2. Grouping Nodes into Subgraphs ---
+    subgraph "Input & History"
+        direction TD;
+        A;
+        R;
+        History;
+    end
 
-    Broadcast -- "Fused Features" --> Classifier
-    Classifier --> Output_Node
+    subgraph "Core Model Logic"
+        direction TD;
+        Pull;
+        InputPrep;
+        HieGNN;
+        Classifier;
+    end
 
-    %% --- Styling ---
-    style A fill:#cde,stroke:#333,stroke-width:2px
-    style R fill:#cde,stroke:#333,stroke-width:2px
-    style A_adj fill:#eee,stroke:#333,stroke-width:1px,stroke-dasharray: 5 5
-    style R_adj fill:#eee,stroke:#333,stroke-width:1px,stroke-dasharray: 5 5
-    style A2R fill:#eee,stroke:#333,stroke-width:1px,stroke-dasharray: 5 5
+    subgraph "Output & Async Update"
+        direction TD;
+        OutputNode;
+        AsyncPush;
+    end
 
-    style AtomGNN_Blocks fill:#f9f,stroke:#333,stroke-width:2px
-    style ResidueGNN_Blocks fill:#f9f,stroke:#333,stroke-width:2px
-    style Pool fill:#e9e,stroke:#333,stroke-width:2px
-    style GlobalPool fill:#e9e,stroke:#333,stroke-width:2px
+    %% --- 3. Connections ---
+    A & R -- "Node Features" --> InputPrep;
+    History -- "Pull Embeddings" --> Pull;
+    Pull --> InputPrep;
+    InputPrep --> HieGNN;
+    HieGNN --> Classifier;
+    Classifier --> OutputNode;
+    HieGNN -- "Updated Embeddings" --> AsyncPush;
+    AsyncPush -- "Async Write" --> History;
 
-    style Classifier fill:#9cf,stroke:#333,stroke-width:2px
-    style Output_Node fill:#9c9,stroke:#333,stroke-width:4px
+    %% --- 4. Styling ---
+    style History fill:#d7a,stroke:#333,stroke-width:3px;
+    style Pull fill:#fdc,stroke:#333,stroke-width:2px;
+    style InputPrep fill:#fdc,stroke:#333,stroke-width:2px;
+    style AsyncPush fill:#fdc,stroke:#333,stroke-width:2px;
+
+    style A fill:#cde,stroke:#333,stroke-width:2px;
+    style R fill:#cde,stroke:#333,stroke-width:2px;
+    
+    style HieGNN fill:#f9f,stroke:#333,stroke-width:2px;
+    style Classifier fill:#9cf,stroke:#333,stroke-width:2px;
+    style OutputNode fill:#9c9,stroke:#333,stroke-width:4px;
     """
     return mermaid_definition
 
