@@ -5,82 +5,119 @@ from torch import Tensor
 import torch.nn.functional as F
 from torch.nn import ModuleList, Sequential, Linear, Dropout, ReLU
 from torch_sparse import SparseTensor
-from torch_geometric.nn import GATConv
+from torch_geometric.nn import global_mean_pool
 
-from .base import ScalableGNN
+from .base import ScalableGNN, GatedGNNBlock
 
 class PPI(ScalableGNN):
-    def __init__(self, num_nodes: int, in_channels, hidden_channels: int,
-                 hidden_heads: int, out_channels: int, out_heads: int,
-                 num_layers: int, dropout: float = 0.0,
-                 pool_size: Optional[int] = None,
+    def __init__(self, num_nodes: int, in_channels: int, hidden_channels: int,
+                 out_channels: int, num_layers: int, heads: int = 1,
+                 dropout: float = 0.0, pool_size: Optional[int] = None,
                  buffer_size: Optional[int] = None, device=None):
-        super().__init__(num_nodes, hidden_channels * hidden_heads, num_layers,
-                         pool_size, buffer_size, device)
+        super().__init__(num_nodes, hidden_channels, num_layers, pool_size,
+                         buffer_size, device)
 
         self.in_channels = in_channels
         self.hidden_channels = hidden_channels
-        self.hidden_heads = hidden_heads
         self.out_channels = out_channels
-        self.out_heads = out_heads
         self.dropout = dropout
-        self.att = Linear(out_channels * out_heads, out_channels * out_heads)
-        self.v = Linear(out_channels * out_heads, 1)
 
-        # 定义多层神经网络
-        self.convs = ModuleList()
+        # 初始投影层，将输入特征映射到隐藏维度
+        self.in_proj = Linear(in_channels, hidden_channels)
 
-        # 第一层Linear
-        conv = Sequential(
-            Linear(in_channels, hidden_channels * hidden_heads),
-            ReLU(),
-            Dropout(dropout)
-        )
-        self.convs.append(conv)
+        # 深度门控GNN层
+        self.blocks = ModuleList()
+        for _ in range(num_layers):
+            block = GatedGNNBlock(hidden_channels, hidden_channels, heads=heads, dropout=dropout)
+            self.blocks.append(block)
 
-        for i in range(num_layers - 1):
-            in_dim = hidden_channels * hidden_heads
-            conv = GATConv(in_dim, hidden_channels, hidden_heads, concat=True,
-                           dropout=dropout, add_self_loops=False)
-            self.convs.append(conv)
-
-        # 输出层,，不是分类头
-        conv = GATConv(hidden_channels * hidden_heads, out_channels, out_heads,
-                       concat=False, dropout=dropout, add_self_loops=False)
-        self.convs.append(conv)
-
-        self.reg_modules = self.convs  # 正则化模块：指权重需要应用权重衰减（weight decay）的层，如卷积层、全连接层
-        self.nonreg_modules = ModuleList()  # 非正则化模块：不需要应用权重衰减的层，如：BatchNorm 层，偏置项（bias），自定义参数（如缩放因子）
+        self.reg_modules = ModuleList([self.in_proj]) + self.blocks
+        self.nonreg_modules = ModuleList()
 
     def reset_parameters(self):
         super().reset_parameters()
-        for conv in self.convs:
-            conv.reset_parameters()
+        self.in_proj.reset_parameters()
+        for block in self.blocks:
+            block.reset_parameters()
 
     def forward(self, x: Tensor, adj_t: SparseTensor, *args) -> Tensor:
-        # 第一层是Sequential(Linear, ReLU, Dropout)
+        # 初始投影
+        x = self.in_proj(x)
         x = F.dropout(x, p=self.dropout, training=self.training)
-        x = self.convs[0](x)  # 直接调用Sequential
-        x = F.elu(x)
+        
+        # 历史嵌入处理 (兼容ScalableGNN)
+        # 第一层不拉取历史，但需要将结果推送到history[0]
         x = self.push_and_pull(self.histories[0], x, *args)
 
-        # 中间的GATConv层
-        for conv, history in zip(self.convs[1:-1], self.histories[1:]):
-            x = F.dropout(x, p=self.dropout, training=self.training)
-            x = conv((x, x[:adj_t.size(0)]), adj_t)
-            x = F.elu(x)  # ELU激活函数使激活的平均值接近零。均值激活接近于零可以使学习更快，因为它们使梯度更接近自然梯度。
-            x = self.push_and_pull(history, x, *args)
+        # 通过门控GNN块进行深度信息交互
+        for i, block in enumerate(self.blocks):
+            x = block(x, adj_t)
+            # 在每个块之后，与对应的历史嵌入交互
+            if i < self.num_layers - 1:
+                x = self.push_and_pull(self.histories[i], x, *args)
+        
+        return x
 
-        # 最后一层GATConv
-        x = F.dropout(x, p=self.dropout, training=self.training)
-        x = self.convs[-1]((x, x[:adj_t.size(0)]), adj_t)
 
-        att = self.v(torch.tanh(self.att(x)))
-        att_score = F.softmax(att, dim=1)
-        scored_out = x * att_score
+class HierarchicalGNN(torch.nn.Module):
+    def __init__(self, atom_num_nodes, residue_num_nodes, atom_in_channels,
+                 residue_in_channels, hidden_channels, out_channels,
+                 atom_num_layers, residue_num_layers, heads=4, dropout=0.3,
+                 pool_size=None, buffer_size=None, device=None):
+        super().__init__()
 
-        return scored_out
+        # 原子级别GNN
+        self.atom_gnn = PPI(
+            num_nodes=atom_num_nodes, in_channels=atom_in_channels,
+            hidden_channels=hidden_channels, out_channels=hidden_channels,
+            num_layers=atom_num_layers, heads=heads, dropout=dropout,
+            pool_size=pool_size, buffer_size=buffer_size, device=device
+        )
 
-    @torch.no_grad()
-    def forward_layer(self, layer, x, adj_t, state):
-        raise NotImplementedError
+        # 残基级别GNN
+        # 输入维度是原始残基特征+原子GNN输出特征
+        residue_in_dim = residue_in_channels + hidden_channels
+        self.residue_gnn = PPI(
+            num_nodes=residue_num_nodes, in_channels=residue_in_dim,
+            hidden_channels=hidden_channels, out_channels=hidden_channels,
+            num_layers=residue_num_layers, heads=heads, dropout=dropout,
+            pool_size=pool_size, buffer_size=buffer_size, device=device
+        )
+
+        # 全局信息融合后的分类头
+        # 输入维度是[局部残基特征, 全局蛋白质特征]
+        classifier_in_dim = hidden_channels + hidden_channels
+        self.classifier = Sequential(
+            Linear(classifier_in_dim, hidden_channels),
+            ReLU(),
+            Dropout(p=dropout),
+            Linear(hidden_channels, out_channels)
+        )
+
+    def forward(self, atom_x, atom_adj_t, residue_x, residue_adj_t, a2r_map):
+        # 1. 原子级别GNN
+        atom_out = self.atom_gnn(atom_x, atom_adj_t)
+
+        # 2. 原子到残基池化 (a2r_map是batch_idx)
+        pooled_atom_feats = global_mean_pool(atom_out, a2r_map)
+
+        # 3. 拼接原始残基特征和池化后的原子特征
+        residue_x_combined = torch.cat([residue_x, pooled_atom_feats], dim=-1)
+
+        # 4. 残基级别GNN (深度门控网络)
+        residue_out = self.residue_gnn(residue_x, residue_adj_t)
+
+        # 5. 全局信息融合
+        # 创建一个指示每个节点属于哪个图的batch向量 (这里假设一个调用是一个图)
+        batch = torch.zeros(residue_out.size(0), dtype=torch.long, device=residue_out.device)
+        global_protein_feats = global_mean_pool(residue_out, batch)
+        
+        # 将全局特征广播到每个残基节点
+        global_protein_feats_expanded = global_protein_feats.repeat(residue_out.size(0), 1)
+
+        # 拼接局部和全局特征
+        final_residue_feats = torch.cat([residue_out, global_protein_feats_expanded], dim=-1)
+
+        # 6. 分类头
+        out = self.classifier(final_residue_feats)
+        return out

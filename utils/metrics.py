@@ -2,91 +2,64 @@ import numpy as np
 import torch
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.metrics import confusion_matrix, roc_curve, precision_recall_curve, auc
+from sklearn.metrics import confusion_matrix, roc_curve, precision_recall_curve, auc, roc_auc_score, average_precision_score
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 from sklearn.metrics import matthews_corrcoef
 
 
-def calculate_metrics(y_true, y_pred, y_scores=None, threshold=0.5):
+def calculate_metrics(y_true, y_scores, threshold):
     """
-    计算常见的二分类评估指标
+    计算并返回一个包含所有二分类评估指标的字典。
+    该函数将阈值无关指标（如AUC）和阈值依赖指标（如F1-score）的计算分离开来，确保逻辑清晰。
 
     参数:
-    - y_true: 真实标签 (0 或 1)
-    - y_pred: 预测标签 (0 或 1)
-    - y_scores: 预测为正类的概率 (用于ROC和PR曲线)
-    - threshold: 二分类的阈值
+    - y_true: 真实标签 (torch.Tensor 或 numpy.ndarray)
+    - y_scores: 模型预测为正类的概率 (torch.Tensor 或 numpy.ndarray)
+    - threshold: 用于二分类决策的阈值 (float)
 
     返回:
-    - 包含各指标值的字典
+    - metrics (dict): 包含所有计算出的评估指标的字典。
     """
-    # 确保输入是numpy数组
+    # 确保输入是numpy数组以便于sklearn处理
     if isinstance(y_true, torch.Tensor):
         y_true = y_true.cpu().numpy()
-    if isinstance(y_pred, torch.Tensor):
-        y_pred = y_pred.cpu().numpy()
-    if y_scores is not None and isinstance(y_scores, torch.Tensor):
+    if isinstance(y_scores, torch.Tensor):
         y_scores = y_scores.cpu().numpy()
 
-    # 计算混淆矩阵元素
-    tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
+    # 1. 阈值无关指标计算 (直接使用概率分数)
+    #    average_precision_score 计算的是 PR AUC
+    pr_auc = average_precision_score(y_true, y_scores)
+    roc_auc = roc_auc_score(y_true, y_scores)
+
+    # 2. 阈值依赖指标计算 (使用给定的阈值进行二分类)
+    y_pred = (y_scores >= threshold).astype(int)
 
     # 计算基础指标
     accuracy = accuracy_score(y_true, y_pred)
     precision = precision_score(y_true, y_pred, zero_division=0)
-    recall = recall_score(y_true, y_pred, zero_division=0)  # 也称为灵敏度(Sensitivity)
-    specificity = tn / (tn + fp) if (tn + fp) > 0 else 0  # 特异度
+    recall = recall_score(y_true, y_pred, zero_division=0)
     f1 = f1_score(y_true, y_pred, zero_division=0)
-    mcc = matthews_corrcoef(y_true, y_pred)  # Matthews相关系数
+    mcc = matthews_corrcoef(y_true, y_pred)
+    
+    # 计算混淆矩阵元素
+    tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
+    specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
 
-    # 计算其他指标
-    npv = tn / (tn + fn) if (tn + fn) > 0 else 0  # 负预测值
-    fpr = fp / (fp + tn) if (fp + tn) > 0 else 0  # 假正率
-    fnr = fn / (fn + tp) if (fn + tp) > 0 else 0  # 假负率
-
-    # 创建指标字典
+    # 整合所有指标到字典中
     metrics = {
+        'roc_auc': roc_auc,
+        'pr_auc': pr_auc,
         'accuracy': accuracy,
-        'precision': precision,  # 正预测值 (Positive Predictive Value)
-        'recall': recall,  # 敏感度 (Sensitivity)
+        'precision': precision,
+        'recall': recall,
         'specificity': specificity,
         'f1_score': f1,
         'mcc': mcc,
-        'npv': npv,  # 负预测值 (Negative Predictive Value)
-        'fpr': fpr,  # 假正率 (False Positive Rate)
-        'fnr': fnr,  # 假负率 (False Negative Rate)
+        'threshold': threshold, # 记录本次计算使用的阈值
         'confusion_matrix': {
-            'tn': tn,
-            'fp': fp,
-            'fn': fn,
-            'tp': tp
+            'tn': tn, 'fp': fp, 'fn': fn, 'tp': tp
         }
     }
-
-    # 计算ROC和PR曲线相关指标 (如果提供了分数)
-    if y_scores is not None:
-        # ROC曲线和AUC
-        fpr_curve, tpr_curve, thresholds_roc = roc_curve(y_true, y_scores)
-        roc_auc = auc(fpr_curve, tpr_curve)
-
-        # PR曲线和AUC
-        precision_curve, recall_curve, thresholds_pr = precision_recall_curve(y_true, y_scores)
-        pr_auc = auc(recall_curve, precision_curve)
-
-        metrics.update({
-            'roc_auc': roc_auc,
-            'pr_auc': pr_auc,
-            'roc_curve': {
-                'fpr': fpr_curve,
-                'tpr': tpr_curve,
-                'thresholds': thresholds_roc
-            },
-            'pr_curve': {
-                'precision': precision_curve,
-                'recall': recall_curve,
-                'thresholds': thresholds_pr
-            }
-        })
 
     return metrics
 
@@ -361,7 +334,7 @@ def evaluate_binary_classifier(model, data_loader, device, threshold=0.5, plot=F
         all_preds = (all_scores >= best_threshold).long()
 
     # 计算评估指标
-    metrics = calculate_metrics(all_targets, all_preds, all_scores, best_threshold)
+    metrics = calculate_metrics(all_targets, all_scores, best_threshold)
 
     # 添加最佳阈值信息
     if use_best_threshold:
