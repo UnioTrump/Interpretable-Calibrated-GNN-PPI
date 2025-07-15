@@ -178,15 +178,16 @@ def save_checkpoint(model, optimizer, epoch, loss, val_loss, filename):
 
 # 设置训练参数
 num_epochs = 100
-best_loss = 999
+best_pr_auc = 0.0  # 追踪最佳PR AUC，越高越好
 patience = 10  # 早停耐心值
 patience_counter = 0
 model_dir = './checkpoints'
 os.makedirs(model_dir, exist_ok=True)
 
 # 初始化优化器和学习率调度器
-optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
-scheduler = ReduceLROnPlateau(optimizer, 'max', patience=5, factor=0.6, verbose=True, min_lr=1e-6)
+optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-4)
+# 将学习率调度器与pr_auc关联，模式为'max'，因为我们希望pr_auc越大越好
+scheduler = ReduceLROnPlateau(optimizer, mode='max', patience=5, factor=0.5, verbose=True)
 
 # 使用tqdm创建整体训练进度条
 print("开始训练...")
@@ -203,25 +204,27 @@ for epoch in epoch_pbar:
     # 在验证集上评估
     val_loss, metrics, best_threshold = test(model, val_data)
     val_losses.append(val_loss)
+    # 让学习率调度器监控pr_auc
     scheduler.step(metrics['pr_auc'])
 
     # 更新进度条
+    current_pr_auc = metrics["pr_auc"]
     epoch_pbar.set_postfix({
         'lr': f'{optimizer.param_groups[0]["lr"]:.1e}',
         'train_loss': f'{train_loss:.4f}',
         'val_loss': f'{val_loss:.4f}',
-        'roc_auc': f'{metrics["roc_auc"]:.4f}',
-        'pr_auc': f'{metrics["pr_auc"]:.4f}',
-        'best_threshold': f'{best_threshold:.4f}',
-        'Save State': 'Saved' if (val_loss < best_loss) else 'Not Saved'
+        'val_pr_auc': f'{current_pr_auc:.4f}',
+        'best_pr_auc': f'{best_pr_auc:.4f}',
+        'Save State': 'Saved' if (current_pr_auc > best_pr_auc) else 'Not Saved'
     })
     epoch_pbar.update(1)
-    # 保存最佳准确率模型
-    if val_losses[-1] < best_loss:
-        best_loss = val_loss
+    
+    # 根据PR AUC保存最佳模型
+    if current_pr_auc > best_pr_auc:
+        best_pr_auc = current_pr_auc
         save_checkpoint(
             model, optimizer, epoch, train_loss, val_loss,
-            os.path.join(model_dir, f'best_model_acc.pt')
+            os.path.join(model_dir, f'best_model_pr_auc.pt')
         )
         patience_counter = 0
     else:
@@ -234,9 +237,9 @@ for epoch in epoch_pbar:
             os.path.join(model_dir, f'model_epoch_{epoch+1}.pt')
         )
     
-    # 早停机制
+    # 基于PR AUC的早停机制
     if patience_counter >= patience:
-        print(f"早停! 验证准确率在{patience}个epoch内没有改善。")
+        print(f"早停! 验证集PR_AUC在 {patience} 个epoch内没有改善。")
         break
 
 print("All done!")
