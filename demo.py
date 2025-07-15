@@ -105,13 +105,13 @@ model = HierarchicalGNN(
     device=device
 ).to(device)
 
-POS_WEIGHT = 1 / torch.tensor(np.sqrt(5.39734))  # 定义全局正样本权重，提升稳定性.这是全部样本的正负样本比值
+POS_WEIGHT = torch.tensor(10)  # 定义全局正样本权重，提升稳定性.这是全部样本的正负样本比值
 def train(run, model, train_proteins, optimizer, grad_norm=None, delta=0.5):
     model.train()
 
     e_loss = 0
     '''还未使用POS_WEIGHT'''
-    criterion = WeightedCrossEntropy(pos_wt=1/POS_WEIGHT, device=device)
+    criterion = WeightedCrossEntropy(pos_wt=POS_WEIGHT, device=device)
     # 移除内部进度条
     for train_p in train_proteins:
         train_p_a_node = torch.FloatTensor(train_p['atom_graph_node'])
@@ -173,19 +173,20 @@ def train(run, model, train_proteins, optimizer, grad_norm=None, delta=0.5):
 
         b_loss = loss.item()
         e_loss += b_loss
-        e_loss /= len(train_proteins)
+
         '''
         batch_loss = float(loss) * mask.sum().item()
         total_loss += batch_loss
         total_examples += mask.sum().item()
         '''
+    e_loss /= len(train_proteins)
     return e_loss
 
 @torch.no_grad()
 def test(model, val_proteins):
     """评估模型在给定数据集上的性能"""
     model.eval()
-    criterion = WeightedCrossEntropy(pos_wt=1/POS_WEIGHT, device=device)
+    criterion = WeightedCrossEntropy(pos_wt=POS_WEIGHT, device=device)
     b_loss = e_loss = 0
     all_probs, all_targets = [], []
 
@@ -226,7 +227,6 @@ def test(model, val_proteins):
         a2r_map = a2r_map.to(device)
 
         # 前向传播
-        optimizer.zero_grad()
         out = model(val_p_a_node, atom_adj_t, val_p_r_node, residue_adj_t, a2r_map)
 
         # 计算损失
@@ -234,15 +234,16 @@ def test(model, val_proteins):
 
         b_loss = loss.item()
         e_loss += b_loss
-        e_loss /= len(val_proteins)
 
         # 记录batch标签和预测值
         all_probs.append(torch.sigmoid(out))
         all_targets.append(targets.float())
 
-    threshold, f_beta = find_best_threshold_by_mcc(
+    e_loss /= len(val_proteins)
+    threshold, f_beta = find_best_threshold_by_f_beta(
         torch.cat(all_targets,dim=0),
-        torch.cat(all_probs,dim=0))
+        torch.cat(all_probs,dim=0),
+        num_threshold=100)
     metrics = calculate_metrics(
         torch.cat(all_targets, dim=0),
         torch.cat(all_probs, dim=0),
@@ -273,7 +274,7 @@ os.makedirs(model_dir, exist_ok=True)
 optimizer = torch.optim.SGD(model.parameters(), lr=1e-3, momentum=0.9, weight_decay=1e-3, nesterov=True)
 # 使用tqdm创建整体训练进度条
 print("开始训练...")
-epoch_pbar = tqdm(range(num_epochs), desc="训练进度", ncols=160)
+epoch_pbar = tqdm(range(num_epochs), desc="训练进度", ncols=180)
 train_losses = []
 val_losses = []
 for epoch in epoch_pbar:
@@ -291,8 +292,8 @@ for epoch in epoch_pbar:
     epoch_pbar.set_postfix({
         'train_loss': f'{train_loss:.4f}',
         'val_loss': f'{val_loss:.4f}',
-        'recall': f'{metrics["recall"]:.4f}',
-        'precision': f'{metrics["precision"]:.4f}',
+        'roc_auc': f'{metrics["roc_auc"]:.4f}',
+        'pr_auc': f'{metrics["pr_auc"]:.4f}',
         'best_threshold': f'{best_threshold:.4f}',
         'Save State': 'Saved' if (val_loss < best_loss) else 'Not Saved'
     })

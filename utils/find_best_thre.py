@@ -1,9 +1,4 @@
-import os
-import torch
-import pickle
-import argparse
 import numpy as np
-import matplotlib.pyplot as plt
 from sklearn.metrics import confusion_matrix, roc_curve, auc, precision_recall_curve
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, matthews_corrcoef
 
