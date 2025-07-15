@@ -121,11 +121,32 @@ def train(run, model, train_proteins, optimizer, grad_norm=None, delta=0.5):
         targets = torch.LongTensor(train_p['label'])
         a2r_map = torch.tensor(train_p['a2r_map'])
 
+        # Convert edge indices to SparseTensor format
+        from torch_sparse import SparseTensor
+        
+        # Create atom adjacency tensor
+        atom_edge_attr = torch.ones(train_p_a_edge.shape[1], dtype=torch.float)
+        atom_adj_t = SparseTensor(
+            row=train_p_a_edge[0],
+            col=train_p_a_edge[1],
+            value=atom_edge_attr,
+            sparse_sizes=(len(train_p_a_node), len(train_p_a_node))
+        ).t()
+        
+        # Create residue adjacency tensor
+        residue_edge_attr = torch.ones(train_p_r_edge.shape[1], dtype=torch.float)
+        residue_adj_t = SparseTensor(
+            row=train_p_r_edge[0],
+            col=train_p_r_edge[1],
+            value=residue_edge_attr,
+            sparse_sizes=(len(train_p_r_node), len(train_p_r_node))
+        ).t()
+
         train_p_r_node = train_p_r_node.to(device)
-        train_p_r_edge = train_p_r_edge.to(device)
+        residue_adj_t = residue_adj_t.to(device)
         targets = targets.to(device)
         train_p_a_node = train_p_a_node.to(device)
-        train_p_a_edge = train_p_a_edge.to(device)
+        atom_adj_t = atom_adj_t.to(device)
         a2r_map = a2r_map.to(device)
         '''
         mask = batch['train_mask']
@@ -141,9 +162,9 @@ def train(run, model, train_proteins, optimizer, grad_norm=None, delta=0.5):
         a2r_map = batch['a2r_map']
         targets = batch['y']
         '''
-        # 前向传播
+        # 向后传播
         optimizer.zero_grad()
-        out = model(train_p_a_node, train_p_a_edge, train_p_r_node, train_p_r_edge, a2r_map)
+        out = model(train_p_a_node, atom_adj_t, train_p_r_node, residue_adj_t, a2r_map)
         loss = criterion.compute_loss(out, targets)
         loss.backward()
         if grad_norm is not None:
@@ -176,16 +197,37 @@ def test(model, val_proteins):
         targets = torch.LongTensor(val_p['label'])
         a2r_map = torch.tensor(val_p['a2r_map'])
 
+        # Convert edge indices to SparseTensor format
+        from torch_sparse import SparseTensor
+        
+        # Create atom adjacency tensor
+        atom_edge_attr = torch.ones(val_p_a_edge.shape[1], dtype=torch.float)
+        atom_adj_t = SparseTensor(
+            row=val_p_a_edge[0],
+            col=val_p_a_edge[1],
+            value=atom_edge_attr,
+            sparse_sizes=(len(val_p_a_node), len(val_p_a_node))
+        ).t()
+        
+        # Create residue adjacency tensor
+        residue_edge_attr = torch.ones(val_p_r_edge.shape[1], dtype=torch.float)
+        residue_adj_t = SparseTensor(
+            row=val_p_r_edge[0],
+            col=val_p_r_edge[1],
+            value=residue_edge_attr,
+            sparse_sizes=(len(val_p_r_node), len(val_p_r_node))
+        ).t()
+
         val_p_r_node = val_p_r_node.to(device)
-        val_p_r_edge = val_p_r_edge.to(device)
+        residue_adj_t = residue_adj_t.to(device)
         targets = targets.to(device)
         val_p_a_node = val_p_a_node.to(device)
-        val_p_a_edge = val_p_a_edge.to(device)
+        atom_adj_t = atom_adj_t.to(device)
         a2r_map = a2r_map.to(device)
 
         # 前向传播
         optimizer.zero_grad()
-        out = model(val_p_a_node, val_p_a_edge, val_p_r_node, val_p_r_edge, a2r_map)
+        out = model(val_p_a_node, atom_adj_t, val_p_r_node, residue_adj_t, a2r_map)
 
         # 计算损失
         loss = criterion.compute_loss(out, targets)
