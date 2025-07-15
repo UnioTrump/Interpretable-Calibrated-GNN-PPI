@@ -30,15 +30,15 @@ class GatedGNNBlock(Module):
         self.out_channels = out_channels
         self.heads = heads
 
-        # GAT卷积层
-        self.conv = GATConv(in_channels, out_channels, heads=heads, dropout=dropout, add_self_loops=False)
-        # 层归一化
-        self.norm = LayerNorm(heads * out_channels)
+        # GAT卷积层 - 设置concat=False，使得多头输出被平均，保持维度不变
+        self.conv = GATConv(in_channels, out_channels, heads=heads, concat=False, dropout=dropout, add_self_loops=False)
+        # 层归一化 - 作用在out_channels上
+        self.norm = LayerNorm(out_channels)
         # 激活函数
         self.act = ELU()
         # 门控机制的线性层
-        # 输入是拼接后的[原始特征, 变换后特征]，所以in_features是两倍通道数
-        self.gate_linear = Linear(2 * heads * out_channels, heads * out_channels)
+        # 现在x_in和x_transformed维度相同，都是out_channels
+        self.gate_linear = Linear(2 * out_channels, out_channels)
         self.gate_act = Sigmoid()
 
     def reset_parameters(self):

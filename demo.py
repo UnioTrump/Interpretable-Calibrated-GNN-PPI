@@ -47,12 +47,13 @@ model = HierarchicalGNN(
     residue_num_nodes=max_residue_nodes,
     atom_in_channels=37,
     residue_in_channels=1024,
-    hidden_channels=128,      # 降低隐藏维度以减少计算量
-    out_channels=1,           # 二分类任务，输出1个logit
+    hidden_channels=128,
+    out_channels=1,
     atom_num_layers=2,
-    residue_num_layers=4,     # 增加残基网络深度以利用门控残差结构
-    heads=4,                  # GAT的头数
-    dropout=0.4,              # 调整dropout
+    residue_num_layers=4,
+    dropout=0.4,
+    pool_size=2,
+    buffer_size=500,
     device=device
 ).to(device)
 

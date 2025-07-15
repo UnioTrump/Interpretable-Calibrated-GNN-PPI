@@ -11,15 +11,15 @@ from .base import ScalableGNN, GatedGNNBlock
 
 class PPI(ScalableGNN):
     def __init__(self, num_nodes: int, in_channels: int, hidden_channels: int,
-                 out_channels: int, num_layers: int, heads: int = 1,
+                 num_layers: int, heads: int = 1,
                  dropout: float = 0.0, pool_size: Optional[int] = None,
                  buffer_size: Optional[int] = None, device=None):
+        # 注意：这里的 'hidden_channels' 必须和 GatedGNNBlock 的输出维度一致
         super().__init__(num_nodes, hidden_channels, num_layers, pool_size,
                          buffer_size, device)
 
         self.in_channels = in_channels
         self.hidden_channels = hidden_channels
-        self.out_channels = out_channels
         self.dropout = dropout
 
         # 初始投影层，将输入特征映射到隐藏维度
@@ -58,7 +58,6 @@ class PPI(ScalableGNN):
         
         return x
 
-
 class HierarchicalGNN(torch.nn.Module):
     def __init__(self, atom_num_nodes, residue_num_nodes, atom_in_channels,
                  residue_in_channels, hidden_channels, out_channels,
@@ -69,7 +68,7 @@ class HierarchicalGNN(torch.nn.Module):
         # 原子级别GNN
         self.atom_gnn = PPI(
             num_nodes=atom_num_nodes, in_channels=atom_in_channels,
-            hidden_channels=hidden_channels, out_channels=hidden_channels,
+            hidden_channels=hidden_channels,
             num_layers=atom_num_layers, heads=heads, dropout=dropout,
             pool_size=pool_size, buffer_size=buffer_size, device=device
         )
@@ -79,7 +78,7 @@ class HierarchicalGNN(torch.nn.Module):
         residue_in_dim = residue_in_channels + hidden_channels
         self.residue_gnn = PPI(
             num_nodes=residue_num_nodes, in_channels=residue_in_dim,
-            hidden_channels=hidden_channels, out_channels=hidden_channels,
+            hidden_channels=hidden_channels,
             num_layers=residue_num_layers, heads=heads, dropout=dropout,
             pool_size=pool_size, buffer_size=buffer_size, device=device
         )
@@ -105,7 +104,7 @@ class HierarchicalGNN(torch.nn.Module):
         residue_x_combined = torch.cat([residue_x, pooled_atom_feats], dim=-1)
 
         # 4. 残基级别GNN (深度门控网络)
-        residue_out = self.residue_gnn(residue_x, residue_adj_t)
+        residue_out = self.residue_gnn(residue_x_combined, residue_adj_t)
 
         # 5. 全局信息融合
         # 创建一个指示每个节点属于哪个图的batch向量 (这里假设一个调用是一个图)
