@@ -1,312 +1,210 @@
 from tqdm import tqdm
-import pickle
 import torch
 import os
 import time
 import numpy as np
+import collections
+from sklearn.model_selection import StratifiedKFold
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-from torch_sparse import SparseTensor
-from utils import WeightedCrossEntropy, calculate_metrics
-from utils import find_best_threshold_by_f_beta
-from GASPPI import HierarchicalGNN
-# from config import DefaultConfig
+from torch_geometric.loader import DataLoader
+from utils.losses import WeightedCrossEntropy
+from utils.metrics import calculate_metrics
+from utils.find_best_thre import find_best_threshold_by_f_beta
+from utils.data import load_dataset
+from GASPPI.model.PPI import HierarchicalGNN
 import matplotlib.pyplot as plt
 import argparse
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-torch.manual_seed(123)
 
-
-def load_data(pkl_path):
-    with open(pkl_path, 'rb') as f:
-        # train_list = pickle.load(f) # 正式训练时取消注释
-        raw_data = pickle.load(f)
-    return raw_data
-
-
-def prepare_sample(sample, device):
-    """将单个样本数据转换为torch tensor并移动到指定设备"""
-    p_a_node = torch.FloatTensor(sample['atom_graph_node'])
-    p_a_edge = torch.LongTensor(sample['atom_graph_edge'])
-    p_r_node = torch.FloatTensor(sample['residue_graph_node'])
-    p_r_edge = torch.LongTensor(sample['residue_graph_edge'])
-    targets = torch.LongTensor(sample['label'])
-    a2r_map = torch.tensor(sample['a2r_map'])
-
-    # 创建原子邻接张量
-    atom_edge_attr = torch.ones(p_a_edge.shape[1], dtype=torch.float)
-    atom_adj_t = SparseTensor(
-        row=p_a_edge[0], col=p_a_edge[1],
-        value=atom_edge_attr,
-        sparse_sizes=(len(p_a_node), len(p_a_node))
-    ).t()
-
-    # 创建残基邻接张量
-    residue_edge_attr = torch.ones(p_r_edge.shape[1], dtype=torch.float)
-    residue_adj_t = SparseTensor(
-        row=p_r_edge[0], col=p_r_edge[1],
-        value=residue_edge_attr,
-        sparse_sizes=(len(p_r_node), len(p_r_node))
-    ).t()
-
-    return (
-        p_a_node.to(device), atom_adj_t.to(device),
-        p_r_node.to(device), residue_adj_t.to(device),
-        targets.to(device), a2r_map.to(device)
-    )
-
-
-def train(model, train_proteins, optimizer, batch_size, pos_weight, grad_norm=None):
+def train(model, loader, optimizer, criterion, device, grad_norm=None):
     model.train()
-    np.random.shuffle(train_proteins)  # 每个epoch开始时打乱训练集
-
     total_loss = 0
-    criterion = WeightedCrossEntropy(pos_wt=pos_weight, device=device)
-
-    # 按批次处理数据
-    for i in range(0, len(train_proteins), batch_size):
-        batch_proteins = train_proteins[i:i + batch_size]
-        optimizer.zero_grad()  # 为新批次清零梯度
-
-        batch_loss_sum = 0 # 用于正确记录该批次的总损失
-        # 在批次内累积梯度
-        for protein in batch_proteins:
-            p_a_node, atom_adj_t, p_r_node, residue_adj_t, targets, a2r_map = prepare_sample(protein, device)
-
-            # 前向传播
-            out = model(p_a_node, atom_adj_t, p_r_node, residue_adj_t, a2r_map)
-            loss = criterion.compute_loss(out, targets)
-            batch_loss_sum += loss.item() # 为日志记录累积未经缩放的损失
-
-            # 为了平均梯度，将损失除以批次大小
-            loss = loss / len(batch_proteins)
-            loss.backward()  # 累积梯度
-
+    for batch in loader:
+        batch = batch.to(device)
+        optimizer.zero_grad()
+        out = model(batch)
+        loss = criterion.compute_loss(out, batch.y)
+        loss.backward()
+        
         if grad_norm is not None:
             torch.nn.utils.clip_grad_norm_(model.parameters(), grad_norm)
+            
+        optimizer.step()
+        total_loss += loss.item() * batch.num_graphs
 
-        optimizer.step()  # 在批次结束后更新权重
-
-        # 记录该批次的损失
-        total_loss += batch_loss_sum
-
-    return total_loss / len(train_proteins)
-
+    return total_loss / len(loader.dataset)
 
 @torch.no_grad()
-def test(model, val_proteins, pos_weight):
-    """评估模型在给定数据集上的性能"""
+def test(model, loader, criterion, device):
     model.eval()
-    criterion = WeightedCrossEntropy(pos_wt=pos_weight, device=device)
     total_loss = 0
     all_probs, all_targets = [], []
 
-    for val_p in val_proteins:
-        p_a_node, atom_adj_t, p_r_node, residue_adj_t, targets, a2r_map = prepare_sample(val_p, device)
-
-        # 前向传播
-        out = model(p_a_node, atom_adj_t, p_r_node, residue_adj_t, a2r_map)
-
-        # 计算损失
-        loss = criterion.compute_loss(out, targets)
-        total_loss += loss.item()
-
-        # 记录batch标签和预测值
+    for batch in loader:
+        batch = batch.to(device)
+        out = model(batch)
+        loss = criterion.compute_loss(out, batch.y)
+        total_loss += loss.item() * batch.num_graphs
         all_probs.append(torch.sigmoid(out))
-        all_targets.append(targets.float())
+        all_targets.append(batch.y)
 
-    avg_loss = total_loss / len(val_proteins)
-
+    avg_loss = total_loss / len(loader.dataset)
     all_targets_tensor = torch.cat(all_targets, dim=0)
     all_probs_tensor = torch.cat(all_probs, dim=0)
 
-    threshold, f_beta = find_best_threshold_by_f_beta(
-        all_targets_tensor,
-        all_probs_tensor,
-        num_threshold=100)
-    metrics = calculate_metrics(
-        y_true=all_targets_tensor,
-        y_scores=all_probs_tensor,
-        threshold=threshold)
+    threshold, _ = find_best_threshold_by_f_beta(all_targets_tensor, all_probs_tensor, num_threshold=100)
+    metrics = calculate_metrics(y_true=all_targets_tensor, y_scores=all_probs_tensor, threshold=threshold)
 
     return avg_loss, metrics, threshold
 
-
-def save_checkpoint(model, optimizer, epoch, loss, val_loss, filename):
-    """保存模型检查点"""
-    checkpoint = {
-        'epoch': epoch,
-        'model_state_dict': model.state_dict(),
-        'optimizer_state_dict': optimizer.state_dict(),
-        'loss': loss,
-        'val_loss': val_loss,
-    }
-    torch.save(checkpoint, filename)
-
-def plot_loss_curves(train_losses, val_losses, save_path='loss_curves.png'):
-    """
-    绘制并保存训练和验证损失曲线图。
-
-    参数:
-    - train_losses (list): 包含每个epoch训练损失的列表。
-    - val_losses (list): 包含每个epoch验证损失的列表。
-    - save_path (str): 图片保存路径。
-    """
+def plot_loss_curves(train_losses, val_losses, fold, save_path='loss_curves'):
+    os.makedirs(save_path, exist_ok=True)
     epochs = range(1, len(train_losses) + 1)
-
     plt.figure(figsize=(10, 6))
     plt.plot(epochs, train_losses, 'b-o', label='Training Loss')
     plt.plot(epochs, val_losses, 'r-o', label='Validation Loss')
-    plt.title('Training and Validation Loss Curves')
+    plt.title(f'Fold {fold + 1} - Training and Validation Loss')
     plt.xlabel('Epochs')
     plt.ylabel('Loss')
     plt.legend()
     plt.grid(True, linestyle='--', alpha=0.6)
     
-    # 找到验证损失最低点并标记
-    best_val_epoch = np.argmin(val_losses)
-    best_val_loss = val_losses[best_val_epoch]
-    plt.axvline(x=best_val_epoch + 1, color='gray', linestyle='--', label=f'Best Val Loss Epoch: {best_val_epoch+1}')
-    plt.scatter(best_val_epoch + 1, best_val_loss, marker='*', s=150, color='gold', zorder=5, label=f'Best Val Loss: {best_val_loss:.4f}')
+    if val_losses:
+        best_val_epoch = np.argmin(val_losses)
+        best_val_loss = val_losses[best_val_epoch]
+        plt.axvline(x=best_val_epoch + 1, color='gray', linestyle='--', label=f'Best Val Loss Epoch: {best_val_epoch+1}')
+        plt.scatter(best_val_epoch + 1, best_val_loss, marker='*', s=150, color='gold', zorder=5, label=f'Best Val Loss: {best_val_loss:.4f}')
     
-    # 重新整理图例，避免重叠
     handles, labels = plt.gca().get_legend_handles_labels()
-    by_label = dict(zip(labels, handles))
+    by_label = collections.OrderedDict(zip(labels, handles))
     plt.legend(by_label.values(), by_label.keys())
-
-    plt.savefig(save_path, dpi=300)
-    print(f"损失曲线图已保存至: {save_path}")
+    save_filename = os.path.join(save_path, f'fold_{fold+1}_loss_curve.png')
+    plt.savefig(save_filename, dpi=300)
     plt.close()
 
-
 def main(args):
-    # 使用args设置超参数
-    BATCH_SIZE = args.batch_size
-    POS_WEIGHT = torch.tensor(args.pos_weight).to(device)
+    torch.manual_seed(args.seed)
+    np.random.seed(args.seed)
     
-    train_list = load_data(args.data_path)
+    print("Loading and processing dataset...")
+    dataset = load_dataset(data_path=args.data_path)
+    print("Dataset loaded successfully.")
 
-    # 创建完整数据集
-    samples_num = len(train_list)
-    split_num = int(0.8 * samples_num)
-    data_index = list(train_list)
-    np.random.shuffle(data_index)
-    train_data = data_index[:split_num]
-    val_data = data_index[split_num:]
-
-    # 计算数据集中原子和残基的最大数量
-    if not train_list:
-        print("错误: 数据列表为空。")
-        return
-        
-    atom_nodes = [len(d['atom_graph_node']) for d in train_list]
-    residue_nodes = [len(d['residue_graph_node']) for d in train_list]
-    max_atom_nodes = max(atom_nodes) if atom_nodes else 0
-    max_residue_nodes = max(residue_nodes) if residue_nodes else 0
-
-    model = HierarchicalGNN(
-        atom_num_nodes=max_atom_nodes,
-        residue_num_nodes=max_residue_nodes,
-        atom_in_channels=37,
-        residue_in_channels=1024,
-        hidden_channels=256,
-        out_channels=1,
-        atom_num_layers=4,
-        residue_num_layers=4,
-        dropout=0.4,
-        pool_size=2,
-        buffer_size=500,
-        device=device
-    ).to(device)
-
-    # 设置训练参数
-    num_epochs = args.epochs
-    best_pr_auc = 0.0
-    patience = args.patience
-    patience_counter = 0
-    model_dir = args.model_dir
-    os.makedirs(model_dir, exist_ok=True)
-
-    # 初始化优化器和学习率调度器
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-    scheduler = ReduceLROnPlateau(optimizer, mode='max', patience=5, factor=0.5, verbose=True)
-
-    # 使用tqdm创建整体训练进度条
-    print("开始训练...")
-    epoch_pbar = tqdm(range(num_epochs), desc="训练进度", ncols=180)
-    train_losses = []
-    val_losses = []
-
-    for epoch in epoch_pbar:
-        # 训练
-        start_time = time.time()
-        train_loss = train(model, train_data, optimizer, batch_size=BATCH_SIZE, pos_weight=POS_WEIGHT, grad_norm=1.0)
-        train_losses.append(train_loss)
-        train_time = time.time() - start_time
-
-        # 在验证集上评估
-        val_loss, metrics, best_threshold = test(model, val_data, pos_weight=POS_WEIGHT)
-        val_losses.append(val_loss)
-        # 让学习率调度器监控pr_auc
-        scheduler.step(metrics['pr_auc'])
-
-        # 更新进度条
-        current_pr_auc = metrics["pr_auc"]
-        epoch_pbar.set_postfix({
-            'lr': f'{optimizer.param_groups[0]["lr"]:.1e}',
-            'train_loss': f'{train_loss:.4f}',
-            'val_loss': f'{val_loss:.4f}',
-            'roc_auc': f'{metrics["roc_auc"]:.4f}',
-            'best_pr_auc': f'{best_pr_auc:.4f}',
-            'Save State': 'Saved' if (current_pr_auc > best_pr_auc) else 'Not Saved'
-        })
-        epoch_pbar.update(1)
-        
-        # 根据PR AUC保存最佳模型
-        if current_pr_auc > best_pr_auc:
-            best_pr_auc = current_pr_auc
-            save_checkpoint(
-                model, optimizer, epoch, train_loss, val_loss,
-                os.path.join(model_dir, f'best_model_pr_auc.pt')
-            )
-            patience_counter = 0
-        else:
-            patience_counter += 1
-
-        # 每10个epoch保存一次检查点
-        if (epoch + 1) % 10 == 0:
-            save_checkpoint(
-                model, optimizer, epoch, train_loss, val_loss,
-                os.path.join(model_dir, f'model_epoch_{epoch+1}.pt')
-            )
-        
-        # 基于PR AUC的早停机制
-        if patience_counter >= patience:
-            print(f"早停! 验证集PR_AUC在 {patience} 个epoch内没有改善。")
-            break
-
-    print("训练结束！")
+    # Squeeze labels to be 1D for StratifiedKFold
+    labels = np.array([data.y.item() for data in dataset])
     
-    # 绘制并保存损失曲线
-    figure_save_path = os.path.join(args.loss_figure_path, 'loss_curves.png')
-    plot_loss_curves(train_losses, val_losses, save_path=figure_save_path)
+    skf = StratifiedKFold(n_splits=args.n_splits, shuffle=True, random_state=args.seed)
+    fold_metrics = []
 
+    for fold, (train_idx, val_idx) in enumerate(skf.split(np.zeros(len(dataset)), labels)):
+        print(f"\n===== Fold {fold + 1}/{args.n_splits} =====")
+        
+        train_subset = torch.utils.data.Subset(dataset, train_idx)
+        val_subset = torch.utils.data.Subset(dataset, val_idx)
+        
+        train_labels = labels[train_idx]
+        num_pos = np.sum(train_labels == 1)
+        num_neg = np.sum(train_labels == 0)
+        pos_weight_value = num_neg / num_pos if num_pos > 0 else 1.0
+        pos_weight_tensor = torch.tensor(pos_weight_value, device=device)
+        criterion = WeightedCrossEntropy(pos_wt=pos_weight_tensor, device=device)
+        print(f"Fold {fold+1} POS_WEIGHT: {pos_weight_value:.2f}")
+
+        train_loader = DataLoader(train_subset, batch_size=args.batch_size, shuffle=True)
+        val_loader = DataLoader(val_subset, batch_size=args.batch_size, shuffle=False)
+
+        data_sample = dataset[0]
+        model = HierarchicalGNN(
+            atom_in_channels=data_sample.atom_x.size(1),
+            residue_in_channels=data_sample.residue_x.size(1),
+            hidden_channels=args.hidden_channels,
+            out_channels=1,
+            atom_num_layers=args.atom_num_layers,
+            residue_num_layers=args.residue_num_layers,
+            dropout=args.dropout,
+            heads=args.heads
+        ).to(device)
+
+        optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+        scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=args.scheduler_patience, verbose=True)
+
+        best_pr_auc = 0.0
+        patience_counter = 0
+        best_epoch_metrics = {}
+        model_dir = os.path.join(args.model_dir, f"fold_{fold+1}")
+        os.makedirs(model_dir, exist_ok=True)
+        
+        train_losses, val_losses = [], []
+        epoch_pbar = tqdm(range(args.epochs), desc=f"Fold {fold+1} Training", ncols=180)
+
+        for epoch in epoch_pbar:
+            train_loss = train(model, train_loader, optimizer, criterion, device, grad_norm=1.0)
+            train_losses.append(train_loss)
+
+            val_loss, metrics, best_threshold = test(model, val_loader, criterion, device)
+            val_losses.append(val_loss)
+            
+            pr_auc = metrics['pr_auc']
+            scheduler.step(pr_auc)
+
+            if pr_auc > best_pr_auc:
+                best_pr_auc = pr_auc
+                best_epoch_metrics = metrics
+                best_epoch_metrics['threshold'] = best_threshold
+                patience_counter = 0
+                # Save only the model state_dict for efficiency
+                torch.save(model.state_dict(), os.path.join(model_dir, 'best_model.pth'))
+            else:
+                patience_counter += 1
+
+            epoch_pbar.set_postfix({
+                'Train Loss': f'{train_loss:.4f}', 'Val Loss': f'{val_loss:.4f}',
+                'Val PR_AUC': f'{pr_auc:.4f}', 'Best PR_AUC': f'{best_pr_auc:.4f}',
+                'Patience': f'{patience_counter}/{args.patience}'
+            })
+
+            if patience_counter >= args.patience:
+                print(f"Early stopping at epoch {epoch + 1}")
+                break
+        
+        plot_loss_curves(train_losses, val_losses, fold, save_path=args.plot_dir)
+        print(f"Fold {fold+1} Best Metrics (PR-AUC={best_pr_auc:.4f}):")
+        if best_epoch_metrics:
+            for key, val in best_epoch_metrics.items():
+                print(f"  {key}: {val:.4f}")
+            fold_metrics.append(best_epoch_metrics)
+
+    print("\n===== K-Fold Cross-Validation Results =====")
+    if fold_metrics:
+        avg_metrics = {}
+        for key in fold_metrics[0].keys():
+            values = [m[key] for m in fold_metrics]
+            avg = np.mean(values)
+            std = np.std(values)
+            avg_metrics[key] = (avg, std)
+            print(f"Average {key.upper()}: {avg:.4f} ± {std:.4f}")
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='GASPPI Training Script')
-    parser.add_argument('--data_path', type=str, default='/gz-data/train355-r5.5-a2.3.pkl', help='Path to training data pkl file')
-    parser.add_argument('--epochs', type=int, default=100, help='Number of training epochs')
-    parser.add_argument('--batch_size', type=int, default=16, help='Batch size for training')
-    parser.add_argument('--lr', type=float, default=1e-3, help='Learning rate for AdamW optimizer')
-    parser.add_argument('--weight_decay', type=float, default=1e-4, help='Weight decay for AdamW optimizer')
-    parser.add_argument('--patience', type=int, default=10, help='Patience for early stopping')
-    parser.add_argument('--pos_weight', type=float, default=2.0, help='Positive class weight for loss function')
-    parser.add_argument('--model_dir', type=str, default='./checkpoints', help='Directory to save model checkpoints')
-    parser.add_argument('--loss_figure_path', type=str, default='save_fig', help='Directory to save loss curve figure')
-    
+    parser = argparse.ArgumentParser(description='Train HierarchicalGNN for PPI with K-Fold Cross-Validation')
+    parser.add_argument('--data_path', type=str, required=True, help='Path to the data pkl file')
+    parser.add_argument('--model_dir', type=str, default='./saved_models', help='Directory to save models')
+    parser.add_argument('--plot_dir', type=str, default='./plots', help='Directory to save loss plots')
+    parser.add_argument('--n_splits', type=int, default=5, help='Number of K-fold splits')
+    parser.add_argument('--seed', type=int, default=42, help='Random seed for reproducibility')
+    # Model Hyperparameters
+    parser.add_argument('--hidden_channels', type=int, default=256, help='Number of hidden channels in the GNN')
+    parser.add_argument('--atom_num_layers', type=int, default=4, help='Number of layers in the atom-level GNN')
+    parser.add_argument('--residue_num_layers', type=int, default=4, help='Number of layers in the residue-level GNN')
+    parser.add_argument('--heads', type=int, default=4, help='Number of attention heads in GATConv')
+    parser.add_argument('--dropout', type=float, default=0.4, help='Dropout rate')
+    # Training Hyperparameters
+    parser.add_argument('--lr', type=float, default=1e-4, help='Learning rate')
+    parser.add_argument('--weight_decay', type=float, default=1e-5, help='Weight decay')
+    parser.add_argument('--batch_size', type=int, default=32, help='Batch size')
+    parser.add_argument('--epochs', type=int, default=200, help='Maximum number of epochs')
+    parser.add_argument('--patience', type=int, default=20, help='Patience for early stopping')
+    parser.add_argument('--scheduler_patience', type=int, default=10, help='Patience for learning rate scheduler')
+
     args = parser.parse_args()
-    
-    # 创建图片保存目录
-    os.makedirs(args.loss_figure_path, exist_ok=True)
-    
     main(args)
