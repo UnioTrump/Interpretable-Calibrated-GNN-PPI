@@ -2,9 +2,8 @@ from tqdm import tqdm
 import pickle
 import torch
 import os
-import time
 import numpy as np
-from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.optim.lr_scheduler import ReduceLROnPlateau, CosineAnnealingLR
 from torch_sparse import SparseTensor
 from utils.losses import WeightedCrossEntropy
 from utils.metrics import calculate_metrics
@@ -128,118 +127,116 @@ def plot_loss_curves(train_losses, val_losses, save_path='loss_curves.png'):
 def main(args):
     POS_WEIGHT = torch.tensor(args.pos_weight, device=device)
     
+    # --- 1. 加载并划分数据集 ---
+    print("加载并划分数据...")
     all_proteins = load_data(args.data_path)
     if not all_proteins:
         print("Error: Data list is empty.")
         return
 
+    # 设置随机种子以保证每次划分一致
+    np.random.seed(args.seed)
     np.random.shuffle(all_proteins)
     
-    k_folds = args.k_folds
-    fold_size = len(all_proteins) // k_folds
-    folds = [all_proteins[i*fold_size:(i+1)*fold_size] for i in range(k_folds)]
-    if len(all_proteins) % k_folds != 0:
-        # Add remaining samples to the last fold
-        folds[-1].extend(all_proteins[k_folds*fold_size:])
+    split_index = int(len(all_proteins) * 0.8)
+    train_data = all_proteins[:split_index]
+    val_data   = all_proteins[split_index:]
+    print('train_data', len(train_data))
+    print('val_data', len(val_data))
 
-    all_fold_metrics = []
+    # --- 2. 初始化模型 ---
+    atom_nodes = [len(d['atom_graph_node']) for d in all_proteins]
+    residue_nodes = [len(d['residue_graph_node']) for d in all_proteins]
+    max_atom_nodes = max(atom_nodes) if atom_nodes else 0
+    max_residue_nodes = max(residue_nodes) if residue_nodes else 0
 
-    for fold_idx in range(k_folds):
-        print(f"--- Starting Fold {fold_idx+1}/{k_folds} ---")
+    model = HierarchicalGNN(
+        atom_num_nodes=max_atom_nodes,
+        residue_num_nodes=max_residue_nodes,
+        atom_in_channels=37,
+        residue_in_channels=1024,
+        hidden_channels=256,
+        out_channels=1,
+        atom_num_layers=3,
+        residue_num_layers=3,
+        dropout=args.dropout,
+        heads=4
+    ).to(device)
 
-        val_data = folds[fold_idx]
-        train_data = []
-        for i in range(k_folds):
-            if i != fold_idx:
-                train_data.extend(folds[i])
+    # --- 3. 设置优化器和调度器 ---
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    # scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=args.patience // 2, verbose=True)
+    scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs // 2, eta_min=1e-6)
 
-        atom_nodes = [len(d['atom_graph_node']) for d in all_proteins]
-        residue_nodes = [len(d['residue_graph_node']) for d in all_proteins]
-        max_atom_nodes = max(atom_nodes) if atom_nodes else 0
-        max_residue_nodes = max(residue_nodes) if residue_nodes else 0
 
-        model = HierarchicalGNN(
-            atom_num_nodes=max_atom_nodes,
-            residue_num_nodes=max_residue_nodes,
-            atom_in_channels=37,
-            residue_in_channels=1024,
-            hidden_channels=256,
-            out_channels=1,
-            atom_num_layers=4,
-            residue_num_layers=4,
-            dropout=0.6,
-            heads=4
-        ).to(device)
-
-        optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-        scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=4, verbose=True)
-
-        best_pr_auc = 0.0
-        patience_counter = 0
-        fold_model_dir = os.path.join(args.model_dir, f'fold_{fold_idx+1}')
-        os.makedirs(fold_model_dir, exist_ok=True)
-        
-        train_losses, val_losses = [], []
-        epoch_pbar = tqdm(range(args.epochs), desc=f"Fold {fold_idx+1} Progress", ncols=180)
-
-        for epoch in epoch_pbar:
-            train_loss = train(model, train_data, optimizer, args.batch_size, POS_WEIGHT, grad_norm=1.0)
-            train_losses.append(train_loss)
-
-            val_loss, metrics, best_threshold = test(model, val_data, POS_WEIGHT)
-            val_losses.append(val_loss)
-            
-            pr_auc = metrics['pr_auc']
-
-            scheduler.step(val_loss)
-
-            if pr_auc > best_pr_auc:
-                best_pr_auc = pr_auc
-                patience_counter = 0
-                torch.save(model.state_dict(), os.path.join(fold_model_dir, 'best_model.pth'))
-            else:
-                patience_counter += 1
-
-            epoch_pbar.set_postfix({
-                'Train Loss': f'{train_loss:.4f}', 'Val Loss': f'{val_loss:.4f}',
-                'Val PR_AUC': f'{pr_auc:.4f}', 'roc_auc': f'{metrics["roc_auc"]:.4f}',
-                'Patience': f'{patience_counter}/{args.patience}'
-            })
-
-            if patience_counter >= args.patience:
-                print(f"Early stopping at epoch {epoch + 1}")
-                break
-        
-        # Load best model for final evaluation on this fold
-        model.load_state_dict(torch.load(os.path.join(fold_model_dir, 'best_model.pth')))
-        _, final_metrics, _ = test(model, val_data, POS_WEIGHT)
-        all_fold_metrics.append(final_metrics)
-
-        plot_save_path = os.path.join(args.plot_dir, f'loss_curve_fold_{fold_idx+1}.png')
-        plot_loss_curves(train_losses, val_losses, save_path=plot_save_path)
-
-    print("\n--- K-Fold Cross-Validation Finished ---")
+    best_pr_auc = 0.0
+    patience_counter = 0
+    os.makedirs(args.model_dir, exist_ok=True)
+    best_model_path = os.path.join(args.model_dir, 'best_model.pth')
     
-    # Calculate and print average metrics
-    avg_metrics = {key: np.mean([m[key] for m in all_fold_metrics]) for key in all_fold_metrics[0]}
-    std_metrics = {key: np.std([m[key] for m in all_fold_metrics]) for key in all_fold_metrics[0]}
+    # --- 4. 开始训练循环 ---
+    print("开始训练...")
+    train_losses, val_losses = [], []
+    epoch_pbar = tqdm(range(args.epochs), desc="Training Progress", ncols=180)
 
-    print("Average metrics over all folds:")
-    for key, val in avg_metrics.items():
-        print(f"  {key}: {val:.4f} (+/- {std_metrics[key]:.4f})")
+    for epoch in epoch_pbar:
+        train_loss = train(model, train_data, optimizer, args.batch_size, POS_WEIGHT, grad_norm=1.0)
+        train_losses.append(train_loss)
+
+        val_loss, metrics, best_threshold = test(model, val_data, POS_WEIGHT)
+        val_losses.append(val_loss)
+        
+        pr_auc = metrics['pr_auc']
+        scheduler.step()
+
+        if pr_auc > best_pr_auc:
+            best_pr_auc = pr_auc
+            patience_counter = 0
+            torch.save(model.state_dict(), best_model_path)
+            # print(f"Epoch {epoch+1}: New best model saved with PR_AUC: {pr_auc:.4f}")
+        else:
+            patience_counter += 1
+
+        epoch_pbar.set_postfix({
+            'Train Loss': f'{train_loss:.4f}', 'Val Loss': f'{val_loss:.4f}',
+            'Val PR_AUC': f'{pr_auc:.4f}', 'Val ROC_AUC': f'{metrics["roc_auc"]:.4f}',
+            'Patience': f'{patience_counter}/{args.patience}'
+        })
+
+        if patience_counter >= args.patience:
+            print(f"\nEarly stopping at epoch {epoch + 1}")
+            break
+    
+    # --- 5. 评估并报告最终结果 ---
+    print("\n--- 训练结束 ---")
+    print(f"加载最佳模型 '{best_model_path}' 进行最终评估...")
+    model.load_state_dict(torch.load(best_model_path))
+    final_val_loss, final_metrics, final_threshold = test(model, val_data, POS_WEIGHT)
+
+    print("\n--- 最终模型性能 (验证集) ---")
+    for key, val in final_metrics.items():
+        print(f"  {key.replace('_', ' ').title()}: {val:.4f}")
+
+    # --- 6. 绘制损失曲线 ---
+    plot_save_path = os.path.join(args.plot_dir, 'loss_curve.png')
+    plot_loss_curves(train_losses, val_losses, save_path=plot_save_path)
+
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Train HierarchicalGNN for PPI')
+    parser = argparse.ArgumentParser(description='Train HierarchicalGNN for PPI using a fixed 80/20 split')
     parser.add_argument('--data_path', type=str, required=True, help='Path to the data pkl file')
     parser.add_argument('--model_dir', type=str, default='./saved_models', help='Directory to save models')
     parser.add_argument('--plot_dir', type=str, default='./plots', help='Directory to save loss plots')
+    parser.add_argument('--seed', type=int, default=42, help='Random seed for data splitting')
+
     parser.add_argument('--lr', type=float, default=1e-3, help='Learning rate')
-    parser.add_argument('--weight_decay', type=float, default=1e-4, help='Weight decay')
-    parser.add_argument('--batch_size', type=int, default=1, help='Batch size for gradient accumulation')
-    parser.add_argument('--epochs', type=int, default=100, help='Number of epochs')
+    parser.add_argument('--weight_decay', type=float, default=5e-4, help='Weight decay')
+    parser.add_argument('--dropout', type=float, default=0.5, help='Dropout rate')
+    
+    parser.add_argument('--batch_size', type=int, default=32, help='Batch size for gradient accumulation')
+    parser.add_argument('--epochs', type=int, default=200, help='Number of epochs')
     parser.add_argument('--patience', type=int, default=10, help='Patience for early stopping')
     parser.add_argument('--pos_weight', type=float, default=2.0, help='Positive weight for BCE loss')
-    parser.add_argument('--k_folds', type=int, default=5, help='Number of folds for cross-validation')
     
     args = parser.parse_args()
     main(args)
