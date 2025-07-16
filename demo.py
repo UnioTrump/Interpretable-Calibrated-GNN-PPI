@@ -167,7 +167,7 @@ def main(args):
             out_channels=1,
             atom_num_layers=4,
             residue_num_layers=4,
-            dropout=0.4,
+            dropout=0.6,
             heads=4
         ).to(device)
 
@@ -234,7 +234,7 @@ if __name__ == '__main__':
     parser.add_argument('--model_dir', type=str, default='./saved_models', help='Directory to save models')
     parser.add_argument('--plot_dir', type=str, default='./plots', help='Directory to save loss plots')
     parser.add_argument('--lr', type=float, default=1e-3, help='Learning rate')
-    parser.add_argument('--weight_decay', type=float, default=1e-5, help='Weight decay')
+    parser.add_argument('--weight_decay', type=float, default=1e-4, help='Weight decay')
     parser.add_argument('--batch_size', type=int, default=1, help='Batch size for gradient accumulation')
     parser.add_argument('--epochs', type=int, default=100, help='Number of epochs')
     parser.add_argument('--patience', type=int, default=10, help='Patience for early stopping')

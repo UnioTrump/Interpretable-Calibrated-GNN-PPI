@@ -3,6 +3,8 @@ import torch
 import pickle
 import argparse
 import numpy as np
+import glob
+from tqdm import tqdm
 
 # 从我们的 utils 和 GASPPI 模块中导入必要的组件
 from utils.metrics import calculate_metrics
@@ -53,26 +55,34 @@ def prepare_sample(sample, device):
     )
 
 @torch.no_grad()
-def evaluate(model, data_list):
-    """使用加载的模型在给定数据上进行评估。"""
-    model.eval()
+def evaluate_ensemble(models, data_list, device):
+    """使用加载的一组模型在给定数据上进行集成评估。"""
+    for model in models:
+        model.eval()
+
     all_probs = []
     all_targets = []
 
-    print("开始模型评估...")
-    for sample in data_list:
+    print("开始模型集成评估...")
+    for sample in tqdm(data_list, desc="Ensemble Inference"):
         p_a_node, atom_adj_t, p_r_node, residue_adj_t, targets, a2r_map = prepare_sample(sample, device)
-        
-        # 前向传播
-        out = model(p_a_node, atom_adj_t, p_r_node, residue_adj_t, a2r_map)
-        
+
+        # 存储来自每个模型的预测
+        model_outputs = []
+        for model in models:
+            out = model(p_a_node, atom_adj_t, p_r_node, residue_adj_t, a2r_map)
+            model_outputs.append(torch.sigmoid(out))
+
+        # 对所有模型的预测结果取平均
+        avg_probs = torch.stack(model_outputs).mean(dim=0)
+
         # 收集结果
-        all_probs.append(torch.sigmoid(out))
+        all_probs.append(avg_probs)
         all_targets.append(targets.float())
 
-    all_targets_tensor = torch.cat(all_targets, dim=0)
-    all_probs_tensor = torch.cat(all_probs, dim=0)
-    
+    all_targets_tensor = torch.cat(all_targets, dim=0).cpu()
+    all_probs_tensor = torch.cat(all_probs, dim=0).cpu()
+
     print("评估完成，开始计算指标...")
     # 寻找最佳阈值
     threshold, f_beta = find_best_threshold_by_f_beta(
@@ -91,50 +101,58 @@ def evaluate(model, data_list):
     return metrics
 
 def main(args):
-    # --- 1. 加载数据 ---
-    # 注意：这里我们应该加载一个独立的测试集，或者用验证集来评估
-    # 为了演示，我们先用与demo.py相同的分割方式
-    full_data_list = load_data(args.data_path)
-    np.random.seed(123) # 确保分割与训练时一致
-    np.random.shuffle(full_data_list)
-    split_num = int(0.8 * len(full_data_list))
-    val_data = full_data_list[split_num:]
-
-    # --- 2. 初始化模型 ---
-    # 模型的参数必须与训练时保存的那个模型完全一致
-    # 计算最大节点数以正确初始化模型
-    max_atom_nodes = max(len(d['atom_graph_node']) for d in full_data_list)
-    max_residue_nodes = max(len(d['residue_graph_node']) for d in full_data_list)
+    # --- 1. 加载用于评估的测试数据 ---
+    test_data = load_data(args.data_path)
+    if not test_data:
+        print("测试数据为空，无法进行评估。")
+        return
+        
+    # --- 2. 搜索并加载所有K-Fold模型 ---
+    model_paths = sorted(glob.glob(os.path.join(args.model_dir, 'fold_*/best_model.pth')))
+    if not model_paths:
+        print(f"在目录 '{args.model_dir}' 中没有找到任何 'fold_*/best_model.pth' 模型。")
+        print("请确保您的模型目录结构正确，例如：./saved_models/fold_1/best_model.pth")
+        return
     
-    model = HierarchicalGNN(
-        atom_num_nodes=max_atom_nodes,
-        residue_num_nodes=max_residue_nodes,
-        atom_in_channels=37,
-        residue_in_channels=1024,
-        hidden_channels=256,
-        out_channels=1,
-        atom_num_layers=4,
-        residue_num_layers=4,
-        heads=4,
-        dropout=0.4,
-        pool_size=2,
-        buffer_size=500,
-        device=device
-    ).to(device)
+    print(f"找到了 {len(model_paths)} 个模型用于集成:")
+    for path in model_paths:
+        print(f" - {path}")
 
-    # --- 3. 加载模型权重 ---
-    print(f"从 {args.checkpoint_path} 加载模型权重...")
-    checkpoint = torch.load(args.checkpoint_path, map_location=device)
-    model.load_state_dict(checkpoint['model_state_dict'])
-    print("模型权重加载成功！")
+    # 为了正确初始化模型大小，需要加载训练全集来获取最大节点数
+    # 这是一个简化做法，更稳健的方式是保存训练时的配置
+    print(f"从 {args.train_data_path} 加载训练数据以确定模型尺寸...")
+    full_train_data = load_data(args.train_data_path)
+    max_atom_nodes = max(len(d['atom_graph_node']) for d in full_train_data)
+    max_residue_nodes = max(len(d['residue_graph_node']) for d in full_train_data)
+    print(f"模型将使用 Max Atom Nodes={max_atom_nodes}, Max Residue Nodes={max_residue_nodes}进行初始化。")
 
-    # --- 4. 执行评估 ---
-    final_metrics = evaluate(model, val_data)
+    models = []
+    for path in model_paths:
+        # 基于新的、不含history的模型架构进行初始化
+        model = HierarchicalGNN(
+            atom_num_nodes=max_atom_nodes,
+            residue_num_nodes=max_residue_nodes,
+            atom_in_channels=37,
+            residue_in_channels=1024,
+            hidden_channels=256,
+            out_channels=1,
+            atom_num_layers=4,
+            residue_num_layers=4,
+            heads=4,
+            dropout=0.4
+        ).to(device)
+        model.load_state_dict(torch.load(path, map_location=device))
+        models.append(model)
+    print(f"\n成功加载了 {len(models)} 个模型。")
 
-    # --- 5. 打印评估报告 ---
-    print("\n--- 模型性能评估报告 ---")
+    # --- 3. 执行集成评估 ---
+    final_metrics = evaluate_ensemble(models, test_data, device)
+
+    # --- 4. 打印评估报告 ---
+    print("\n--- 模型集成评估报告 ---")
     print(f"评估数据集: {args.data_path}")
-    print(f"模型检查点: {args.checkpoint_path}")
+    print(f"模型来源目录: {args.model_dir}")
+    print(f"集成了 {len(models)} 个模型")
     print("---------------------------------")
     print(f"最佳F-beta阈值: {final_metrics['threshold']:.4f}")
     print(f"PR AUC:          {final_metrics['pr_auc']:.4f}")
@@ -149,11 +167,13 @@ def main(args):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="评估HierarchicalGNN模型性能")
+    parser = argparse.ArgumentParser(description="使用K-Fold模型集成评估HierarchicalGNN性能")
     parser.add_argument('--data_path', type=str, default='/gz-data/Test60.pkl',
-                        help='包含数据列表的pickle文件路径')
-    parser.add_argument('--checkpoint_path', type=str, default='./checkpoints/best_model_pr_auc.pt',
-                        help='模型检查点文件路径')
+                        help='包含【测试数据】列表的pickle文件路径')
+    parser.add_argument('--train_data_path', type=str, default='/gz-data/Train60.pkl',
+                        help='包含【训练全集】的pickle文件路径 (用于初始化模型大小)')
+    parser.add_argument('--model_dir', type=str, default='./saved_models',
+                        help='包含K-Fold模型子目录(fold_*)的根目录')
     
     args = parser.parse_args()
     main(args)
