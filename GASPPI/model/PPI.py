@@ -1,110 +1,130 @@
-from typing import Optional
-
 import torch
-from torch import Tensor
 import torch.nn.functional as F
-from torch.nn import ModuleList, Sequential, Linear, Dropout, ReLU
+from torch.nn import ModuleList, Linear, LayerNorm, Dropout, ReLU, Sequential
+from torch_geometric.nn import TransformerConv, JumpingKnowledge, global_mean_pool
 from torch_sparse import SparseTensor
-from torch_geometric.nn import global_mean_pool
+from torch import Tensor
 
-from .base import ScalableGNN, GatedGNNBlock
 
-class PPI(ScalableGNN):
-    def __init__(self, num_nodes: int, in_channels: int, hidden_channels: int,
-                 num_layers: int, heads: int = 1,
-                 dropout: float = 0.0):
-        # 注意：这里的 'hidden_channels' 必须和 GatedGNNBlock 的输出维度一致
-        super().__init__(num_nodes, hidden_channels, num_layers)
-
-        self.in_channels = in_channels
-        self.hidden_channels = hidden_channels
+class GNNEncoder(torch.nn.Module):
+    """
+    A powerful and flexible GNN encoder that utilizes TransformerConv layers,
+    LayerNorm, Dropout, and JumpingKnowledge to learn rich node representations.
+    """
+    def __init__(self, in_channels: int, hidden_dims: list, edge_dim: int,
+                 heads: int = 4, dropout: float = 0.2):
+        super().__init__()
         self.dropout = dropout
+        self.convs = ModuleList()
+        self.norms = ModuleList()
 
-        # 初始投影层，将输入特征映射到隐藏维度
-        self.in_proj = Linear(in_channels, hidden_channels)
+        # If the input dimension doesn't match the first hidden dimension,
+        # a linear projection layer is used.
+        if in_channels != hidden_dims[0]:
+            self.in_proj = Linear(in_channels, hidden_dims[0])
+        else:
+            self.in_proj = None
 
-        # 深度门控GNN层
-        self.blocks = ModuleList()
-        for _ in range(num_layers):
-            block = GatedGNNBlock(hidden_channels, hidden_channels, heads=heads, dropout=dropout)
-            self.blocks.append(block)
+        # The effective dimensions for the convolutional layers.
+        layer_dims = [hidden_dims[0]] + hidden_dims
+        for i in range(len(layer_dims) - 1):
+            conv = TransformerConv(
+                layer_dims[i],
+                layer_dims[i+1],
+                heads=heads,
+                dropout=dropout,  # Dropout on attention weights
+                edge_dim=edge_dim,
+                beta=True  # A key parameter for better performance
+            )
+            self.convs.append(conv)
+            self.norms.append(LayerNorm(layer_dims[i+1]))
 
-        self.reg_modules = ModuleList([self.in_proj]) + self.blocks
-        self.nonreg_modules = ModuleList()
+        # Jumping Knowledge to aggregate representations from all layers.
+        # 'cat' mode concatenates the feature vectors.
+        self.jk = JumpingKnowledge(mode='cat')
 
-    def reset_parameters(self):
-        super().reset_parameters()
-        self.in_proj.reset_parameters()
-        for block in self.blocks:
-            block.reset_parameters()
+        # The final output dimension is the sum of all hidden dimensions.
+        self.out_dim = sum(hidden_dims)
 
-    def forward(self, x: Tensor, adj_t: SparseTensor, *args) -> Tensor:
-        # 初始投影
-        x = self.in_proj(x)
-        x = F.dropout(x, p=self.dropout, training=self.training)
+    def forward(self, x: Tensor, adj_t: SparseTensor, edge_attr: Tensor) -> Tensor:
+        if self.in_proj:
+            x = self.in_proj(x)
 
-        # 通过门控GNN块进行深度信息交互
-        for i, block in enumerate(self.blocks):
-            x = block(x, adj_t)
+        # We collect the output of each layer for the JK aggregation.
+        xs = [x]
+        for conv, norm in zip(self.convs, self.norms):
+            x = conv(x, adj_t, edge_attr)
+            x = F.relu(x)
+            x = norm(x)
+            x = F.dropout(x, p=self.dropout, training=self.training)
+            xs.append(x)
 
-        return x
+        # Concatenate the outputs of all layers (excluding the initial projection).
+        return self.jk(xs[1:])
 
-class HierarchicalGNN(torch.nn.Module):
-    def __init__(self, atom_num_nodes, residue_num_nodes, atom_in_channels,
-                 residue_in_channels, hidden_channels, out_channels,
-                 atom_num_layers, residue_num_layers, heads=4, dropout=0.3):
+
+class ProteinGNN(torch.nn.Module):
+    """
+    A hierarchical Graph Neural Network for protein structure analysis.
+    It processes atom-level graphs, pools features to the residue level,
+    and then processes the resulting residue-level graph to make final predictions.
+    """
+    def __init__(self,
+                 atom_in_channels, atom_edge_dim,
+                 residue_in_channels, residue_edge_dim,
+                 atom_hidden_dims, residue_hidden_dims,
+                 out_channels, heads=4, dropout=0.2):
         super().__init__()
 
-        # 原子级别GNN
-        self.atom_gnn = PPI(
-            num_nodes=atom_num_nodes, in_channels=atom_in_channels,
-            hidden_channels=hidden_channels,
-            num_layers=atom_num_layers, heads=heads, dropout=dropout
+        # A GNN encoder for the atom-level graph.
+        self.atom_encoder = GNNEncoder(
+            in_channels=atom_in_channels,
+            hidden_dims=atom_hidden_dims,
+            edge_dim=atom_edge_dim,
+            heads=heads,
+            dropout=dropout
         )
 
-        # 残基级别GNN
-        # 输入维度是原始残基特征+原子GNN输出特征
-        residue_in_dim = residue_in_channels + hidden_channels
-        self.residue_gnn = PPI(
-            num_nodes=residue_num_nodes, in_channels=residue_in_dim,
-            hidden_channels=hidden_channels,
-            num_layers=residue_num_layers, heads=heads, dropout=dropout
+        atom_out_dim = self.atom_encoder.out_dim
+        residue_gnn_in_channels = residue_in_channels + atom_out_dim
+
+        # A GNN encoder for the residue-level graph.
+        self.residue_encoder = GNNEncoder(
+            in_channels=residue_gnn_in_channels,
+            hidden_dims=residue_hidden_dims,
+            edge_dim=residue_edge_dim,
+            heads=heads,
+            dropout=dropout
         )
 
-        # 全局信息融合后的分类头
-        # 输入维度是[局部残基特征, 全局蛋白质特征]
-        classifier_in_dim = hidden_channels + hidden_channels
+        residue_out_dim = self.residue_encoder.out_dim
+
+        # A final classifier to make predictions for each residue.
         self.classifier = Sequential(
-            Linear(classifier_in_dim, hidden_channels),
+            Linear(residue_out_dim, residue_out_dim // 2),
             ReLU(),
             Dropout(p=dropout),
-            Linear(hidden_channels, out_channels)
+            Linear(residue_out_dim // 2, out_channels)
         )
 
-    def forward(self, atom_x, atom_adj_t, residue_x, residue_adj_t, a2r_map):
-        # 1. 原子级别GNN
-        atom_out = self.atom_gnn(atom_x, atom_adj_t)
+    def forward(self,
+                atom_x, atom_adj_t, atom_edge_attr,
+                residue_x, residue_adj_t, residue_edge_attr,
+                atom_to_residue_map):
 
-        # 2. 原子到残基池化 (a2r_map是batch_idx)
-        pooled_atom_feats = global_mean_pool(atom_out, a2r_map)
+        # 1. Generate atom embeddings using the atom-level encoder.
+        atom_out = self.atom_encoder(atom_x, atom_adj_t, atom_edge_attr)
 
-        # 3. 拼接原始残基特征和池化后的原子特征
+        # 2. Pool atom features to the residue level.
+        pooled_atom_feats = global_mean_pool(atom_out, atom_to_residue_map)
+
+        # 3. Concatenate pooled atom features with original residue features.
         residue_x_combined = torch.cat([residue_x, pooled_atom_feats], dim=-1)
 
-        # 4. 残基级别GNN (深度门控网络)
-        residue_out = self.residue_gnn(residue_x_combined, residue_adj_t)
+        # 4. Generate final residue embeddings using the residue-level encoder.
+        residue_out = self.residue_encoder(residue_x_combined, residue_adj_t, residue_edge_attr)
 
-        # 5. 全局信息融合
-        # 创建一个指示每个节点属于哪个图的batch向量 (这里假设一个调用是一个图)
-        batch = torch.zeros(residue_out.size(0), dtype=torch.long, device=residue_out.device)
-        global_protein_feats = global_mean_pool(residue_out, batch)
-        
-        # 将全局特征广播到每个残基节点
-        global_protein_feats_expanded = global_protein_feats.repeat(residue_out.size(0), 1)
+        # 5. Classify each residue.
+        out = self.classifier(residue_out)
 
-        # 拼接局部和全局特征
-        final_residue_feats = torch.cat([residue_out, global_protein_feats_expanded], dim=-1)
-
-        # 6. 分类头
-        out = self.classifier(final_residue_feats)
         return out

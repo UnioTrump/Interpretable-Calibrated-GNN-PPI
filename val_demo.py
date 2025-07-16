@@ -7,7 +7,7 @@ from tqdm import tqdm
 # 从我们的 utils 和 GASPPI 模块中导入必要的组件
 from utils.metrics import calculate_metrics
 from utils.find_best_thre import find_best_threshold_by_f_beta
-from GASPPI.model.PPI import HierarchicalGNN
+from GASPPI.model.PPI import ProteinGNN
 
 # 检查设备
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -23,27 +23,27 @@ def prepare_sample(sample, device):
     """将单个样本数据转换为torch tensor并移动到指定设备。"""
     p_a_node = torch.FloatTensor(sample['atom_graph_node'])
     p_a_edge = torch.LongTensor(sample['atom_graph_edge'])
+    p_a_edge_attr = torch.FloatTensor(sample['atom_graph_edge_attr'])
     p_r_node = torch.FloatTensor(sample['residue_graph_node'])
     p_r_edge = torch.LongTensor(sample['residue_graph_edge'])
+    p_r_edge_attr = torch.FloatTensor(sample['residue_graph_edge_attr'])
     targets = torch.LongTensor(sample['label'])
     a2r_map = torch.tensor(sample['a2r_map'])
 
     # 这里的邻接矩阵创建逻辑需要与训练时一致
     from torch_sparse import SparseTensor
-    atom_edge_attr = torch.ones(p_a_edge.shape[1], device=p_a_edge.device)
     atom_adj_t = SparseTensor(
-        row=p_a_edge[0], col=p_a_edge[1], value=atom_edge_attr,
+        row=p_a_edge[0], col=p_a_edge[1],
         sparse_sizes=(len(p_a_node), len(p_a_node))
     ).t()
-    residue_edge_attr = torch.ones(p_r_edge.shape[1], device=p_r_edge.device)
     residue_adj_t = SparseTensor(
-        row=p_r_edge[0], col=p_r_edge[1], value=residue_edge_attr,
+        row=p_r_edge[0], col=p_r_edge[1],
         sparse_sizes=(len(p_r_node), len(p_r_node))
     ).t()
 
     return (
-        p_a_node.to(device), atom_adj_t.to(device),
-        p_r_node.to(device), residue_adj_t.to(device),
+        p_a_node.to(device), atom_adj_t.to(device), p_a_edge_attr.to(device),
+        p_r_node.to(device), residue_adj_t.to(device), p_r_edge_attr.to(device),
         targets.to(device), a2r_map.to(device)
     )
 
@@ -56,8 +56,8 @@ def evaluate(model, data_list, device):
 
     print("开始模型评估...")
     for sample in tqdm(data_list, desc="Evaluating"):
-        p_a_node, atom_adj_t, p_r_node, residue_adj_t, targets, a2r_map = prepare_sample(sample, device)
-        out = model(p_a_node, atom_adj_t, p_r_node, residue_adj_t, a2r_map)
+        p_a_node, atom_adj_t, p_a_edge_attr, p_r_node, residue_adj_t, p_r_edge_attr, targets, a2r_map = prepare_sample(sample, device)
+        out = model(p_a_node, atom_adj_t, p_a_edge_attr, p_r_node, residue_adj_t, p_r_edge_attr, a2r_map)
         all_probs.append(torch.sigmoid(out))
         all_targets.append(targets.float())
 
@@ -80,18 +80,24 @@ def main(args):
         return
 
     # --- 2. 初始化模型，与demo.py保持完全一致 ---
-    max_atom_nodes = max(len(d['atom_graph_node']) for d in all_proteins)
-    max_residue_nodes = max(len(d['residue_graph_node']) for d in all_proteins)
+    sample_data = all_proteins[0]
+    atom_in_channels = sample_data['atom_graph_node'].shape[1]
+    atom_edge_dim = sample_data['atom_graph_edge_attr'].shape[1]
+    residue_in_channels = sample_data['residue_graph_node'].shape[1]
+    residue_edge_dim = sample_data['residue_graph_edge_attr'].shape[1]
+    out_channels = 1
+
+    atom_hidden_dims = [128, 256, 128]
+    residue_hidden_dims = [128, 256, 128]
     
-    model = HierarchicalGNN(
-        atom_num_nodes=max_atom_nodes,
-        residue_num_nodes=max_residue_nodes,
-        atom_in_channels=37,
-        residue_in_channels=1024,
-        hidden_channels=256,
-        out_channels=1,
-        atom_num_layers=3,      # 与demo.py同步
-        residue_num_layers=3,   # 与demo.py同步
+    model = ProteinGNN(
+        atom_in_channels=atom_in_channels,
+        atom_edge_dim=atom_edge_dim,
+        residue_in_channels=residue_in_channels,
+        residue_edge_dim=residue_edge_dim,
+        atom_hidden_dims=atom_hidden_dims,
+        residue_hidden_dims=residue_hidden_dims,
+        out_channels=out_channels,
         heads=4,
         dropout=args.dropout # 与demo.py同步
     ).to(device)
@@ -120,15 +126,15 @@ def main(args):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="评估单个HierarchicalGNN模型在验证集上的性能")
+    parser = argparse.ArgumentParser(description="评估单个ProteinGNN模型在验证集上的性能")
     parser.add_argument('--full_data_path', type=str, required=True,
-                        help='测试集')
+                        help='包含所有样本的.pkl文件路径，用于初始化模型和进行评估')
     parser.add_argument('--model_dir', type=str, default='./saved_models',
                         help='包含best_model.pth的目录')
     parser.add_argument('--seed', type=int, default=42, 
                         help='用于复现数据划分的随机种子 (必须与demo.py一致)')
     # 这个dropout值也必须与训练时使用的值一致
-    parser.add_argument('--dropout', type=float, default=0.5, help='训练时使用的Dropout率')
+    parser.add_argument('--dropout', type=float, default=0.2, help='训练时使用的Dropout率')
     
     args = parser.parse_args()
     main(args)

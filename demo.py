@@ -8,7 +8,7 @@ from torch_sparse import SparseTensor
 from utils.losses import WeightedCrossEntropy
 from utils.metrics import calculate_metrics
 from utils.find_best_thre import find_best_threshold_by_f_beta
-from GASPPI.model.PPI import HierarchicalGNN
+from GASPPI.model.PPI import ProteinGNN
 import matplotlib.pyplot as plt
 import argparse
 
@@ -26,8 +26,10 @@ def prepare_sample(sample, device):
     """将单个样本数据转换为torch tensor并移动到指定设备"""
     p_a_node = torch.FloatTensor(sample['atom_graph_node'])
     p_a_edge = torch.LongTensor(sample['atom_graph_edge'])
+    p_a_edge_attr = torch.FloatTensor(sample['atom_graph_edge_attr'])
     p_r_node = torch.FloatTensor(sample['residue_graph_node'])
     p_r_edge = torch.LongTensor(sample['residue_graph_edge'])
+    p_r_edge_attr = torch.FloatTensor(sample['residue_graph_edge_attr'])
     targets = torch.LongTensor(sample['label'])
     a2r_map = torch.tensor(sample['a2r_map'])
 
@@ -42,8 +44,8 @@ def prepare_sample(sample, device):
     ).t()
 
     return (
-        p_a_node.to(device), atom_adj_t.to(device),
-        p_r_node.to(device), residue_adj_t.to(device),
+        p_a_node.to(device), atom_adj_t.to(device), p_a_edge_attr.to(device),
+        p_r_node.to(device), residue_adj_t.to(device), p_r_edge_attr.to(device),
         targets.to(device), a2r_map.to(device)
     )
 
@@ -61,8 +63,8 @@ def train(model, train_proteins, optimizer, batch_size, pos_weight, grad_norm=No
 
         batch_loss_sum = 0
         for protein in batch_proteins:
-            p_a_node, atom_adj_t, p_r_node, residue_adj_t, targets, a2r_map = prepare_sample(protein, device)
-            out = model(p_a_node, atom_adj_t, p_r_node, residue_adj_t, a2r_map)
+            p_a_node, atom_adj_t, p_a_edge_attr, p_r_node, residue_adj_t, p_r_edge_attr, targets, a2r_map = prepare_sample(protein, device)
+            out = model(p_a_node, atom_adj_t, p_a_edge_attr, p_r_node, residue_adj_t, p_r_edge_attr, a2r_map)
             loss = criterion.compute_loss(out, targets)
             batch_loss_sum += loss.item()
             loss = loss / len(batch_proteins)
@@ -85,8 +87,8 @@ def test(model, val_proteins, pos_weight):
     all_probs, all_targets = [], []
 
     for val_p in val_proteins:
-        p_a_node, atom_adj_t, p_r_node, residue_adj_t, targets, a2r_map = prepare_sample(val_p, device)
-        out = model(p_a_node, atom_adj_t, p_r_node, residue_adj_t, a2r_map)
+        p_a_node, atom_adj_t, p_a_edge_attr, p_r_node, residue_adj_t, p_r_edge_attr, targets, a2r_map = prepare_sample(val_p, device)
+        out = model(p_a_node, atom_adj_t, p_a_edge_attr, p_r_node, residue_adj_t, p_r_edge_attr, a2r_map)
         loss = criterion.compute_loss(out, targets)
         total_loss += loss.item()
         all_probs.append(torch.sigmoid(out))
@@ -145,23 +147,31 @@ def main(args):
     print('val_data', len(val_data))
 
     # --- 2. 初始化模型 ---
-    atom_nodes = [len(d['atom_graph_node']) for d in all_proteins]
-    residue_nodes = [len(d['residue_graph_node']) for d in all_proteins]
-    max_atom_nodes = max(atom_nodes) if atom_nodes else 0
-    max_residue_nodes = max(residue_nodes) if residue_nodes else 0
+    # 从第一个数据样本中动态获取维度信息
+    sample_data = all_proteins[0]
+    atom_in_channels = sample_data['atom_graph_node'].shape[1]
+    atom_edge_dim = sample_data['atom_graph_edge_attr'].shape[1]
+    residue_in_channels = sample_data['residue_graph_node'].shape[1]
+    residue_edge_dim = sample_data['residue_graph_edge_attr'].shape[1]
+    out_channels = 1 # 二分类
 
-    model = HierarchicalGNN(
-        atom_num_nodes=max_atom_nodes,
-        residue_num_nodes=max_residue_nodes,
-        atom_in_channels=37,
-        residue_in_channels=1024,
-        hidden_channels=256,
-        out_channels=1,
-        atom_num_layers=3,
-        residue_num_layers=3,
+    # 定义具有层次结构的隐藏维度
+    atom_hidden_dims = [128, 256, 128]
+    residue_hidden_dims = [128, 256, 128]
+
+    model = ProteinGNN(
+        atom_in_channels=atom_in_channels,
+        atom_edge_dim=atom_edge_dim,
+        residue_in_channels=residue_in_channels,
+        residue_edge_dim=residue_edge_dim,
+        atom_hidden_dims=atom_hidden_dims,
+        residue_hidden_dims=residue_hidden_dims,
+        out_channels=out_channels,
         dropout=args.dropout,
         heads=4
     ).to(device)
+    print("模型已成功初始化 (ProteinGNN):")
+    print(model)
 
     # --- 3. 设置优化器和调度器 ---
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
@@ -223,7 +233,7 @@ def main(args):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Train HierarchicalGNN for PPI using a fixed 80/20 split')
+    parser = argparse.ArgumentParser(description='Train ProteinGNN for PPI using a fixed 80/20 split')
     parser.add_argument('--data_path', type=str, required=True, help='Path to the data pkl file')
     parser.add_argument('--model_dir', type=str, default='./saved_models', help='Directory to save models')
     parser.add_argument('--plot_dir', type=str, default='./plots', help='Directory to save loss plots')
@@ -231,10 +241,10 @@ if __name__ == '__main__':
 
     parser.add_argument('--lr', type=float, default=1e-3, help='Learning rate')
     parser.add_argument('--weight_decay', type=float, default=5e-4, help='Weight decay')
-    parser.add_argument('--dropout', type=float, default=0.5, help='Dropout rate')
+    parser.add_argument('--dropout', type=float, default=0.2, help='Dropout rate')
     
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size for gradient accumulation')
-    parser.add_argument('--epochs', type=int, default=200, help='Number of epochs')
+    parser.add_argument('--epochs', type=int, default=100, help='Number of epochs')
     parser.add_argument('--patience', type=int, default=10, help='Patience for early stopping')
     parser.add_argument('--pos_weight', type=float, default=2.0, help='Positive weight for BCE loss')
     
