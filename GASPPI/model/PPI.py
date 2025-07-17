@@ -34,8 +34,8 @@ class GNNEncoder(torch.nn.Module):
                 layer_dims[i],
                 layer_dims[i+1],
                 heads=heads,
-                concat=False, # This is the fix. Averages heads instead of concatenating.
-                dropout=dropout,  # Dropout on attention weights
+                concat=False,
+                dropout=dropout,
                 edge_dim=self.edge_dim,
                 beta=True  # A key parameter for better performance
             )
@@ -43,10 +43,8 @@ class GNNEncoder(torch.nn.Module):
             self.norms.append(LayerNorm(layer_dims[i+1]))
 
         # Jumping Knowledge to aggregate representations from all layers.
-        # 'cat' mode concatenates the feature vectors.
         self.jk = JumpingKnowledge(mode='cat')
 
-        # The final output dimension is the sum of all hidden dimensions.
         self.out_dim = sum(hidden_dims)
 
     def forward(self, x: Tensor, adj_t: SparseTensor) -> Tensor:

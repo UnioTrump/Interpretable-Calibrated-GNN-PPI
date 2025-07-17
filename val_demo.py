@@ -97,7 +97,7 @@ def main(args):
     out_channels = 1
 
     atom_hidden_dims = [128, 256, 128]
-    residue_hidden_dims = [128, 256, 128]
+    residue_hidden_dims = [256, 512, 256, 128]
     
     model = ProteinGNN(
         atom_in_channels=atom_in_channels,
@@ -146,7 +146,7 @@ if __name__ == '__main__':
     parser.add_argument('--seed', type=int, default=42, 
                         help='用于复现数据划分的随机种子 (必须与demo.py一致)')
     # 这个dropout值也必须与训练时使用的值一致
-    parser.add_argument('--dropout', type=float, default=0.2, help='训练时使用的Dropout率')
+    parser.add_argument('--dropout', type=float, default=0.5, help='训练时使用的Dropout率')
     
     args = parser.parse_args()
     main(args)

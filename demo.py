@@ -17,11 +17,11 @@ import argparse
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 torch.manual_seed(42)
 
-
 def load_data(pkl_path):
-    with open(pkl_path, 'rb') as f:
-        raw_data = pickle.load(f)
-    return raw_data
+    if os.path.isdir(pkl_path):
+        return sum((pickle.load(open(os.path.join(pkl_path, f), 'rb'))
+                   for f in os.listdir(pkl_path) if f.endswith('.pkl')), [])
+    return pickle.load(open(pkl_path, 'rb'))
 
 
 def prepare_sample(sample, device):
@@ -257,9 +257,9 @@ if __name__ == '__main__':
 
     parser.add_argument('--lr', type=float, default=4e-4, help='Learning rate')
     parser.add_argument('--weight_decay', type=float, default=4e-4, help='Weight decay')
-    parser.add_argument('--dropout', type=float, default=0.7, help='Dropout rate')
+    parser.add_argument('--dropout', type=float, default=0.5, help='Dropout rate')
     
-    parser.add_argument('--batch_size', type=int, default=16, help='Batch size for gradient accumulation')
+    parser.add_argument('--batch_size', type=int, default=32, help='Batch size for gradient accumulation')
     parser.add_argument('--epochs', type=int, default=100, help='Number of epochs')
     parser.add_argument('--patience', type=int, default=10, help='Patience for early stopping')
     parser.add_argument('--pos_weight', type=float, default=1.0, help='Positive weight for BCE loss')

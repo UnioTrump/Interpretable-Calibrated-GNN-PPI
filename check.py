@@ -1,67 +1,61 @@
 def create_model_diagram():
     """
-    生成并返回描述 HierarchicalGNN 模型架构的 Mermaid 图定义。
-    此版本为最终防御性编程版本，采用最稳健的语法，保证100%可渲染。
+    生成简化版 ProteinGNN 主结构图，每个大模块用一个块表示。
     """
     mermaid_definition = r"""
-graph LR;
-    %% --- 1. Node Definitions ---
-    A["Atom Features"];
-    R["Residue Features"];
-    History["History Module"];
+flowchart TD
+    A["Atom Features"] --> AtomGNN["Atom-level GNN"]
+    R["Residue Features"] --> Cat["Concat"]
+    AtomGNN --> Pool["Global Mean Pooling"] --> Cat
+    Cat --> ResidueGNN["Residue-level GNN"]
+    ResidueGNN --> Classifier["MLP Classifier"]
+    Classifier --> Output["Prediction (Residue-level)"]
 
-    Pull["(1) Pull from History"];
-    InputPrep["(2) Prepare Batch Data"];
-    HieGNN[("Hierarchical GNN<br/>Atom -> Residue -> Fusion")];
-    Classifier["MLP Classifier"];
-    
-    OutputNode(("Prediction"));
-    AsyncPush["(3) Push to History"];
+    %% --- 样式美化 ---
+    style A fill:#cde,stroke:#333,stroke-width:2px
+    style R fill:#cde,stroke:#333,stroke-width:2px
+    style AtomGNN fill:#f9f,stroke:#333,stroke-width:2px
+    style Pool fill:#fdc,stroke:#333,stroke-width:2px
+    style Cat fill:#eee,stroke:#333,stroke-width:2px
+    style ResidueGNN fill:#f9f,stroke:#333,stroke-width:2px
+    style Classifier fill:#9cf,stroke:#333,stroke-width:2px
+    style Output fill:#9c9,stroke:#333,stroke-width:4px
+    """
+    return mermaid_definition
 
-    %% --- 2. Grouping Nodes into Subgraphs ---
-    subgraph "Input & History"
-        direction TD;
-        A;
-        R;
-        History;
+
+def create_gnn_block_diagram():
+    """
+    生成美化版GNN内部结构细节图（以Atom-level GNN为例），适合PPT细节页展示。
+    """
+    mermaid_definition = r"""
+flowchart LR
+    %% --- 输入 ---
+    X(["<b>Input Features</b>"]):::input --> TC1["<b>TransformerConv</b><br/>+ <i>Edge Weights</i>"]:::conv
+    TC1 -.->|"<b>Edge Weights<br/>(Gaussian)</b>"| TC1
+    TC1 --> LN1["<b>LayerNorm</b>"]:::norm --> DO1["<b>Dropout</b>"]:::drop
+    DO1 --> TC2["<b>TransformerConv</b>"]:::conv --> LN2["<b>LayerNorm</b>"]:::norm --> DO2["<b>Dropout</b>"]:::drop
+    DO2 --> TC3["<b>TransformerConv</b>"]:::conv --> LN3["<b>LayerNorm</b>"]:::norm --> DO3["<b>Dropout</b>"]:::drop
+    DO3 --> JK["<b>JumpingKnowledge</b><br/><i>(Concat)</i>"]:::jk --> Out(["<b>Output Embedding</b>"]):::output
+
+    %% --- 分组区块 ---
+    subgraph GNNBlock["<b>GNN Block (Atom-level)</b>"]
+        direction LR
+        X --> TC1 --> LN1 --> DO1 --> TC2 --> LN2 --> DO2 --> TC3 --> LN3 --> DO3 --> JK --> Out
     end
 
-    subgraph "Core Model Logic"
-        direction TD;
-        Pull;
-        InputPrep;
-        HieGNN;
-        Classifier;
-    end
+    %% --- 样式定义 ---
+    classDef input fill:#cde,stroke:#333,stroke-width:2px,font-weight:bold;
+    classDef conv fill:#f9f,stroke:#333,stroke-width:2px;
+    classDef norm fill:#eee,stroke:#333,stroke-width:2px;
+    classDef drop fill:#fdc,stroke:#333,stroke-width:2px;
+    classDef jk fill:#9cf,stroke:#333,stroke-width:2px,font-weight:bold;
+    classDef output fill:#9c9,stroke:#333,stroke-width:3px,font-weight:bold;
+    classDef edgeweight fill:#fff,stroke:#f66,stroke-width:2px;
 
-    subgraph "Output & Async Update"
-        direction TD;
-        OutputNode;
-        AsyncPush;
-    end
-
-    %% --- 3. Connections ---
-    A & R -- "Node Features" --> InputPrep;
-    History -- "Pull Embeddings" --> Pull;
-    Pull --> InputPrep;
-    InputPrep --> HieGNN;
-    HieGNN --> Classifier;
-    Classifier --> OutputNode;
-    HieGNN -- "Updated Embeddings" --> AsyncPush;
-    AsyncPush -- "Async Write" --> History;
-
-    %% --- 4. Styling ---
-    style History fill:#d7a,stroke:#333,stroke-width:3px;
-    style Pull fill:#fdc,stroke:#333,stroke-width:2px;
-    style InputPrep fill:#fdc,stroke:#333,stroke-width:2px;
-    style AsyncPush fill:#fdc,stroke:#333,stroke-width:2px;
-
-    style A fill:#cde,stroke:#333,stroke-width:2px;
-    style R fill:#cde,stroke:#333,stroke-width:2px;
-    
-    style HieGNN fill:#f9f,stroke:#333,stroke-width:2px;
-    style Classifier fill:#9cf,stroke:#333,stroke-width:2px;
-    style OutputNode fill:#9c9,stroke:#333,stroke-width:4px;
+    %% --- 图标注释 ---
+    %% 这里可根据PPT需要添加说明
+    %% 注：TransformerConv支持边权重，JumpingKnowledge融合多层特征
     """
     return mermaid_definition
 
