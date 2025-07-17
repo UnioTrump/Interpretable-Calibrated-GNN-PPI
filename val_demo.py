@@ -8,6 +8,9 @@ from tqdm import tqdm
 from utils.metrics import calculate_metrics
 from utils.find_best_thre import find_best_threshold_by_f_beta
 from GASPPI.model.PPI import ProteinGNN
+from GASPPI.utils import add_gaussian_edge_weights
+from torch_geometric.data import Data
+from torch_sparse import SparseTensor
 
 # 检查设备
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -20,30 +23,38 @@ def load_data(pkl_path):
     return data_list
 
 def prepare_sample(sample, device):
-    """将单个样本数据转换为torch tensor并移动到指定设备。"""
-    p_a_node = torch.FloatTensor(sample['atom_graph_node'])
-    p_a_edge = torch.LongTensor(sample['atom_graph_edge'])
-    p_a_edge_attr = torch.FloatTensor(sample['atom_graph_edge_attr'])
-    p_r_node = torch.FloatTensor(sample['residue_graph_node'])
-    p_r_edge = torch.LongTensor(sample['residue_graph_edge'])
-    p_r_edge_attr = torch.FloatTensor(sample['residue_graph_edge_attr'])
+    """将单个样本数据转换为torch_geometric.data.Data对象，并计算边权重。"""
+    atom_graph = Data(
+        x=torch.FloatTensor(sample['atom_graph_node']),
+        edge_index=torch.LongTensor(sample['atom_graph_edge']),
+    )
+    residue_graph = Data(
+        x=torch.FloatTensor(sample['residue_graph_node']),
+        edge_index=torch.LongTensor(sample['residue_graph_edge']),
+    )
+
+    # 计算高斯边权重
+    atom_graph = add_gaussian_edge_weights(atom_graph, sigma=1.0)
+    residue_graph = add_gaussian_edge_weights(residue_graph, sigma=1.0)
+
+    # 创建稀疏邻接矩阵，同时包含【结构】和【权重】
+    atom_adj_t = SparseTensor(
+        row=atom_graph.edge_index[0], col=atom_graph.edge_index[1],
+        value=atom_graph.edge_attr,  # 保持 [N, 1] 形状
+        sparse_sizes=(len(atom_graph.x), len(atom_graph.x))
+    ).t()
+    residue_adj_t = SparseTensor(
+        row=residue_graph.edge_index[0], col=residue_graph.edge_index[1],
+        value=residue_graph.edge_attr, # 保持 [N, 1] 形状
+        sparse_sizes=(len(residue_graph.x), len(residue_graph.x))
+    ).t()
+
     targets = torch.LongTensor(sample['label'])
     a2r_map = torch.tensor(sample['a2r_map'])
 
-    # 这里的邻接矩阵创建逻辑需要与训练时一致
-    from torch_sparse import SparseTensor
-    atom_adj_t = SparseTensor(
-        row=p_a_edge[0], col=p_a_edge[1],
-        sparse_sizes=(len(p_a_node), len(p_a_node))
-    ).t()
-    residue_adj_t = SparseTensor(
-        row=p_r_edge[0], col=p_r_edge[1],
-        sparse_sizes=(len(p_r_node), len(p_r_node))
-    ).t()
-
     return (
-        p_a_node.to(device), atom_adj_t.to(device), p_a_edge_attr.to(device),
-        p_r_node.to(device), residue_adj_t.to(device), p_r_edge_attr.to(device),
+        atom_graph.x.to(device), atom_adj_t.to(device),
+        residue_graph.x.to(device), residue_adj_t.to(device),
         targets.to(device), a2r_map.to(device)
     )
 
@@ -56,8 +67,8 @@ def evaluate(model, data_list, device):
 
     print("开始模型评估...")
     for sample in tqdm(data_list, desc="Evaluating"):
-        p_a_node, atom_adj_t, p_a_edge_attr, p_r_node, residue_adj_t, p_r_edge_attr, targets, a2r_map = prepare_sample(sample, device)
-        out = model(p_a_node, atom_adj_t, p_a_edge_attr, p_r_node, residue_adj_t, p_r_edge_attr, a2r_map)
+        atom_graph_x, atom_adj_t, residue_graph_x, residue_adj_t, targets, a2r_map = prepare_sample(sample, device)
+        out = model(atom_graph_x, atom_adj_t, residue_graph_x, residue_adj_t, a2r_map)
         all_probs.append(torch.sigmoid(out))
         all_targets.append(targets.float())
 
@@ -82,9 +93,7 @@ def main(args):
     # --- 2. 初始化模型，与demo.py保持完全一致 ---
     sample_data = all_proteins[0]
     atom_in_channels = sample_data['atom_graph_node'].shape[1]
-    atom_edge_dim = sample_data['atom_graph_edge_attr'].shape[1]
     residue_in_channels = sample_data['residue_graph_node'].shape[1]
-    residue_edge_dim = sample_data['residue_graph_edge_attr'].shape[1]
     out_channels = 1
 
     atom_hidden_dims = [128, 256, 128]
@@ -92,9 +101,7 @@ def main(args):
     
     model = ProteinGNN(
         atom_in_channels=atom_in_channels,
-        atom_edge_dim=atom_edge_dim,
         residue_in_channels=residue_in_channels,
-        residue_edge_dim=residue_edge_dim,
         atom_hidden_dims=atom_hidden_dims,
         residue_hidden_dims=residue_hidden_dims,
         out_channels=out_channels,
@@ -114,14 +121,19 @@ def main(args):
 
     # --- 4. 执行评估 ---
     final_metrics = evaluate(model, all_proteins, device)
-
+    
     # --- 5. 打印评估报告 ---
     print("\n--- 模型性能评估报告 (验证集) ---")
     print("---------------------------------------")
     for key, val in final_metrics.items():
-        # 将 "pr_auc" 这样的键转换为 "Pr Auc"
-        formatted_key = key.replace('_', ' ').title()
-        print(f"{formatted_key:<15}: {val:.4f}")
+        if isinstance(val, (int, float)):
+             print(f"  {key.replace('_', ' ').title()}: {val:.4f}")
+        elif isinstance(val, dict):
+            print(f"  {key.replace('_', ' ').title()}:")
+            for sub_key, sub_val in val.items():
+                print(f"    {sub_key.upper()}: {sub_val}")
+        else:
+            print(f"  {key.replace('_', ' ').title()}: {val}")
     print("---------------------------------------\n")
 
 

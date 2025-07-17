@@ -4,6 +4,9 @@ import torch
 from torch import Tensor
 import torch.nn.functional as F
 from torch_sparse import SparseTensor
+from torch_geometric.data import Data
+from torch_geometric.utils import to_scipy_sparse_matrix, from_scipy_sparse_matrix
+import numpy as np
 
 
 def index2mask(idx: Tensor, size: int) -> Tensor:
@@ -70,3 +73,37 @@ def dropout(adj_t: SparseTensor, p: float, training: bool = True):
         adj_t = adj_t.masked_select_nnz(mask, layout='coo')
 
     return adj_t
+
+
+def add_gaussian_edge_weights(data: Data, sigma: float = 1.0) -> Data:
+    """
+    Computes edge weights based on the Gaussian kernel of node features and adds
+    them to the data object as `edge_attr`.
+
+    Args:
+        data (Data): The graph data object, containing `data.x` and `data.edge_index`.
+        sigma (float): The sigma parameter for the Gaussian kernel.
+
+    Returns:
+        Data: The data object with `edge_attr` added.
+    """
+    node_features = data.x
+    edge_index = data.edge_index
+
+    # Get the features of the source and target nodes for each edge
+    row, col = edge_index
+    feat_i = node_features[row]
+    feat_j = node_features[col]
+
+    # Compute the squared Euclidean distance
+    dist = torch.sum((feat_i - feat_j) ** 2, dim=-1)
+
+    # Apply the Gaussian kernel
+    weights = torch.exp(-dist / (2 * sigma ** 2))
+
+    data.edge_attr = weights.unsqueeze(1)  # Ensure shape is [num_edges, 1]
+    return data
+
+
+def network_edge_threshold(adj, a, b):
+    a = a.cpu()
