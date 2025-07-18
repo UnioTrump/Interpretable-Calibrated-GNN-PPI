@@ -7,6 +7,7 @@ from torch_sparse import SparseTensor
 from torch_geometric.data import Data
 from torch_geometric.utils import to_scipy_sparse_matrix, from_scipy_sparse_matrix
 import numpy as np
+from torch_geometric.transforms import AddLaplacianEigenvectorPE
 
 
 def index2mask(idx: Tensor, size: int) -> Tensor:
@@ -102,6 +103,29 @@ def add_gaussian_edge_weights(data: Data, sigma: float = 1.0) -> Data:
     weights = torch.exp(-dist / (2 * sigma ** 2))
 
     data.edge_attr = weights.unsqueeze(1)  # Ensure shape is [num_edges, 1]
+    return data
+
+
+def add_laplacian_pe(data: Data, pe_dim: int) -> Data:
+    """
+    Computes the Laplacian Positional Encodings for the graph and adds them
+    to the data object.
+
+    Args:
+        data (Data): The graph data object.
+        pe_dim (int): The dimension of the positional encodings.
+
+    Returns:
+        Data: The data object with `lap_pe` added.
+    """
+    # This transform computes the PE based on the graph's connectivity
+    # and attaches it as 'data.lap_pe'
+    transform = AddLaplacianEigenvectorPE(
+        k=pe_dim,
+        attr_name='lap_pe',
+        is_undirected=True
+    )
+    data = transform(data)
     return data
 
 

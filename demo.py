@@ -8,8 +8,9 @@ from torch_sparse import SparseTensor
 from utils.losses import WeightedCrossEntropy
 from utils.metrics import calculate_metrics
 from utils.find_best_thre import find_best_threshold_by_f_beta
-from GASPPI.model.PPI import ProteinGNN
-from GASPPI.utils import add_gaussian_edge_weights
+# Import the new model and the PE utility
+from GASPPI.model.dual_stream import DualStreamPPI
+from GASPPI.utils import add_gaussian_edge_weights, add_laplacian_pe
 from torch_geometric.data import Data
 import matplotlib.pyplot as plt
 import argparse
@@ -24,45 +25,59 @@ def load_data(pkl_path):
     return pickle.load(open(pkl_path, 'rb'))
 
 
-def prepare_sample(sample, device):
-    """将单个样本数据转换为torch_geometric.data.Data对象，并计算边权重"""
-    atom_graph = Data(
+def prepare_sample(sample, pe_dim, device):
+    """
+    Converts a single sample dictionary into a torch_geometric.data.Data object,
+    computes Gaussian edge weights, and adds Laplacian Positional Encodings.
+    """
+    # Create separate Data objects for atom and residue graphs to compute weights
+    atom_graph_for_weights = Data(
         x=torch.FloatTensor(sample['atom_graph_node']),
         edge_index=torch.LongTensor(sample['atom_graph_edge']),
     )
-    residue_graph = Data(
+    residue_graph_for_weights = Data(
         x=torch.FloatTensor(sample['residue_graph_node']),
         edge_index=torch.LongTensor(sample['residue_graph_edge']),
     )
 
-    # 计算高斯边权重
-    atom_graph = add_gaussian_edge_weights(atom_graph, sigma=1.0)
-    residue_graph = add_gaussian_edge_weights(residue_graph, sigma=1.0)
+    # Compute Gaussian edge weights
+    atom_graph_for_weights = add_gaussian_edge_weights(atom_graph_for_weights, sigma=1.0)
+    residue_graph_for_weights = add_gaussian_edge_weights(residue_graph_for_weights, sigma=1.0)
 
-    # 创建稀疏邻接矩阵，同时包含【结构】和【权重】
+    # Create SparseTensors for model input
     atom_adj_t = SparseTensor(
-        row=atom_graph.edge_index[0], col=atom_graph.edge_index[1],
-        value=atom_graph.edge_attr, # 移除 .squeeze()
-        sparse_sizes=(len(atom_graph.x), len(atom_graph.x))
+        row=atom_graph_for_weights.edge_index[0], col=atom_graph_for_weights.edge_index[1],
+        value=atom_graph_for_weights.edge_attr.squeeze(),
+        sparse_sizes=(len(atom_graph_for_weights.x), len(atom_graph_for_weights.x))
     ).t()
 
     residue_adj_t = SparseTensor(
-        row=residue_graph.edge_index[0], col=residue_graph.edge_index[1],
-        value=residue_graph.edge_attr, # 移除 .squeeze()
-        sparse_sizes=(len(residue_graph.x), len(residue_graph.x))
+        row=residue_graph_for_weights.edge_index[0], col=residue_graph_for_weights.edge_index[1],
+        value=residue_graph_for_weights.edge_attr.squeeze(),
+        sparse_sizes=(len(residue_graph_for_weights.x), len(residue_graph_for_weights.x))
     ).t()
 
-    targets = torch.LongTensor(sample['label'])
-    a2r_map = torch.tensor(sample['a2r_map'])
-
-    return (
-        atom_graph.x.to(device), atom_adj_t.to(device),
-        residue_graph.x.to(device), residue_adj_t.to(device),
-        targets.to(device), a2r_map.to(device)
+    # Now, create the main Data object for the DualStream model
+    data = Data(
+        atom_x=torch.FloatTensor(sample['atom_graph_node']),
+        atom_adj_t=atom_adj_t,
+        residue_x=torch.FloatTensor(sample['residue_graph_node']),
+        residue_adj_t=residue_adj_t,
+        edge_index=torch.LongTensor(sample['residue_graph_edge']), # Edges to predict
+        y=torch.LongTensor(sample['label']),
+        atom_to_residue_map=torch.tensor(sample['a2r_map'])
     )
 
+    # Add Laplacian PE to the residue graph representation
+    # We create a temporary data object for this, as the PE is based on residue connectivity
+    residue_graph_for_pe = Data(x=data.residue_x, edge_index=data.residue_adj_t.to_edge_index())
+    residue_graph_for_pe = add_laplacian_pe(residue_graph_for_pe, pe_dim=pe_dim)
+    data.lap_pe = residue_graph_for_pe.lap_pe
 
-def train(model, train_proteins, optimizer, batch_size, pos_weight, grad_norm=None):
+    return data.to(device)
+
+
+def train(model, train_proteins, optimizer, batch_size, pos_weight, pe_dim, grad_norm=None):
     model.train()
     np.random.shuffle(train_proteins)
 
@@ -75,9 +90,9 @@ def train(model, train_proteins, optimizer, batch_size, pos_weight, grad_norm=No
 
         batch_loss_sum = 0
         for protein in batch_proteins:
-            p_a_node, atom_adj_t, p_r_node, residue_adj_t, targets, a2r_map = prepare_sample(protein, device)
-            out = model(p_a_node, atom_adj_t, p_r_node, residue_adj_t, a2r_map)
-            loss = criterion.compute_loss(out, targets)
+            data = prepare_sample(protein, pe_dim, device)
+            out = model(data) # Model now takes the full data object
+            loss = criterion.compute_loss(out, data.y)
             batch_loss_sum += loss.item()
             loss = loss / len(batch_proteins)
             loss.backward()
@@ -92,19 +107,19 @@ def train(model, train_proteins, optimizer, batch_size, pos_weight, grad_norm=No
 
 
 @torch.no_grad()
-def test(model, val_proteins, pos_weight):
+def test(model, val_proteins, pos_weight, pe_dim):
     model.eval()
     criterion = WeightedCrossEntropy(pos_wt=pos_weight, device=device)
     total_loss = 0
     all_probs, all_targets = [], []
 
     for val_p in val_proteins:
-        p_a_node, atom_adj_t, p_r_node, residue_adj_t, targets, a2r_map = prepare_sample(val_p, device)
-        out = model(p_a_node, atom_adj_t, p_r_node, residue_adj_t, a2r_map)
-        loss = criterion.compute_loss(out, targets)
+        data = prepare_sample(val_p, pe_dim, device)
+        out = model(data) # Model now takes the full data object
+        loss = criterion.compute_loss(out, data.y)
         total_loss += loss.item()
         all_probs.append(torch.sigmoid(out))
-        all_targets.append(targets.float())
+        all_targets.append(data.y.float())
 
     avg_loss = total_loss / len(val_proteins)
     all_targets_tensor = torch.cat(all_targets, dim=0)
@@ -140,7 +155,8 @@ def plot_loss_curves(train_losses, val_losses, save_path='loss_curves.png'):
 
 def main(args):
     POS_WEIGHT = torch.tensor(args.pos_weight, device=device)
-    
+    PE_DIM = args.pe_dim # Get PE dimension from args
+
     # --- 1. 加载并划分数据集 ---
     print("加载并划分数据...")
     all_proteins = load_data(args.data_path)
@@ -169,16 +185,27 @@ def main(args):
     atom_hidden_dims = [128, 256, 128]
     residue_hidden_dims = [256, 512, 256, 128]
 
-    model = ProteinGNN(
+    # Geometric stream dimensions
+    geo_hidden_dim = 128
+    geo_out_dim = 64
+
+    # Fusion dimension
+    fusion_hidden_dim = 128
+
+    model = DualStreamPPI(
         atom_in_channels=atom_in_channels,
         residue_in_channels=residue_in_channels,
         atom_hidden_dims=atom_hidden_dims,
         residue_hidden_dims=residue_hidden_dims,
+        pe_dim=PE_DIM,
+        geo_hidden_dim=geo_hidden_dim,
+        geo_out_dim=geo_out_dim,
+        fusion_hidden_dim=fusion_hidden_dim,
         out_channels=out_channels,
         dropout=args.dropout,
         heads=4
     ).to(device)
-    print("模型已成功初始化 (ProteinGNN):")
+    print("模型已成功初始化 (DualStreamPPI):")
     print(model)
 
     # --- 3. 设置优化器和调度器 ---
@@ -198,10 +225,10 @@ def main(args):
     epoch_pbar = tqdm(range(args.epochs), desc="Training Progress", ncols=180)
 
     for epoch in epoch_pbar:
-        train_loss = train(model, train_data, optimizer, args.batch_size, POS_WEIGHT, grad_norm=1.0)
+        train_loss = train(model, train_data, optimizer, args.batch_size, POS_WEIGHT, pe_dim=PE_DIM, grad_norm=1.0)
         train_losses.append(train_loss)
 
-        val_loss, metrics, best_threshold = test(model, val_data, POS_WEIGHT)
+        val_loss, metrics, best_threshold = test(model, val_data, POS_WEIGHT, pe_dim=PE_DIM)
         val_losses.append(val_loss)
         
         pr_auc = metrics['pr_auc']
@@ -224,24 +251,6 @@ def main(args):
         if patience_counter >= args.patience:
             print(f"\nEarly stopping at epoch {epoch + 1}")
             break
-    
-    # --- 5. 评估并报告最终结果 ---
-    print("\n--- 训练结束 ---")
-    print(f"加载最佳模型 '{best_model_path}' 进行最终评估...")
-    model.load_state_dict(torch.load(best_model_path))
-    final_val_loss, final_metrics, final_threshold = test(model, val_data, POS_WEIGHT)
-
-    print("\n--- 最终模型性能 (验证集) ---")
-    for key, val in final_metrics.items():
-        if isinstance(val, (int, float)):
-             print(f"  {key.replace('_', ' ').title()}: {val:.4f}")
-        elif isinstance(val, dict):
-            print(f"  {key.replace('_', ' ').title()}:")
-            for sub_key, sub_val in val.items():
-                print(f"    {sub_key.upper()}: {sub_val}")
-        else:
-            print(f"  {key.replace('_', ' ').title()}: {val}")
-
 
     # --- 6. 绘制损失曲线 ---
     plot_save_path = os.path.join(args.plot_dir, 'loss_curve.png')
@@ -263,6 +272,7 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', type=int, default=100, help='Number of epochs')
     parser.add_argument('--patience', type=int, default=10, help='Patience for early stopping')
     parser.add_argument('--pos_weight', type=float, default=1.0, help='Positive weight for BCE loss')
+    parser.add_argument('--pe_dim', type=int, default=16, help='Dimension of Laplacian Positional Encodings')
     
     args = parser.parse_args()
     main(args)
