@@ -127,11 +127,9 @@ class ProteinGNN(torch.nn.Module):
 
 class GeometricStream(torch.nn.Module):
     """
-    This is the Geometric/Positional Stream of our Dual-Stream model.
-    It takes the difference of Laplacian Positional Encodings (PE) between
-    two nodes of an edge and processes it through an MLP.
-    Its goal is to learn a representation of the edge's role and
-    position within the overall graph structure.
+    Processes node-level Laplacian Positional Encodings (PE) through an MLP
+    to learn a representation of each node's role and position within the
+    overall graph structure. This is for NODE classification.
     """
     def __init__(self, pe_dim: int, hidden_dim: int, out_dim: int, dropout: float = 0.2):
         super().__init__()
@@ -141,36 +139,25 @@ class GeometricStream(torch.nn.Module):
             Dropout(p=dropout),
             Linear(hidden_dim, out_dim)
         )
+        self.out_dim = out_dim
 
-    def forward(self, lap_pe: Tensor, edge_index: Tensor) -> Tensor:
+    def forward(self, lap_pe: Tensor) -> Tensor:
         """
         Args:
-            lap_pe (Tensor): The Laplacian Positional Encodings for all nodes
-                           in the graph. Shape: [num_nodes, pe_dim]
-            edge_index (Tensor): The edge_index of the graph for which to
-                                 compute the geometric features.
-                                 Shape: [2, num_edges]
-
+            lap_pe (Tensor): The Laplacian Positional Encodings for all nodes.
+                           Shape: [num_nodes, pe_dim]
         Returns:
-            Tensor: A geometric embedding for each edge.
-                    Shape: [num_edges, out_dim]
+            Tensor: A geometric embedding for each node.
+                    Shape: [num_nodes, out_dim]
         """
-        # For each edge (u, v), compute the geometric feature pe(u) - pe(v)
-        node_u = lap_pe[edge_index[0]]
-        node_v = lap_pe[edge_index[1]]
-        edge_pe_feat = node_u - node_v
-
-        # Process the geometric feature through the MLP
-        geometric_embedding = self.mlp(edge_pe_feat)
-        return geometric_embedding
+        return self.mlp(lap_pe)
 
 
 class DualStreamPPI(torch.nn.Module):
     """
-    The complete Dual-Stream Protein-Protein Interaction prediction model.
-    It combines a feature/topology stream (ProteinGNN) and a
-    geometric/positional stream (GeometricStream) to make highly informed
-    predictions.
+    The complete Dual-Stream PPI prediction model, corrected for NODE
+    CLASSIFICATION. It combines a feature stream and a geometric stream to
+    make predictions for each residue (node).
     """
     def __init__(self,
                  # Feature Stream Args
@@ -178,12 +165,11 @@ class DualStreamPPI(torch.nn.Module):
                  atom_hidden_dims, residue_hidden_dims,
                  # Geometric Stream Args
                  pe_dim, geo_hidden_dim, geo_out_dim,
-                 # Fusion & General Args
-                 fusion_hidden_dim, out_channels,
-                 heads=4, dropout=0.2):
+                 # General Args
+                 out_channels, heads=4, dropout=0.2):
         super().__init__()
 
-        # 1. Initialize the Feature/Topology Stream
+        # 1. Initialize the Feature/Topology Stream (produces node embeddings)
         self.feature_stream = ProteinGNN(
             atom_in_channels=atom_in_channels,
             residue_in_channels=residue_in_channels,
@@ -193,7 +179,7 @@ class DualStreamPPI(torch.nn.Module):
             dropout=dropout
         )
 
-        # 2. Initialize the Geometric/Positional Stream
+        # 2. Initialize the Geometric/Positional Stream (produces node embeddings)
         self.geometric_stream = GeometricStream(
             pe_dim=pe_dim,
             hidden_dim=geo_hidden_dim,
@@ -201,67 +187,36 @@ class DualStreamPPI(torch.nn.Module):
             dropout=dropout
         )
 
-        # 3. Define the Gated Fusion layers
+        # 3. Define the final Classifier, which also acts as the fusion layer
         feature_stream_out_dim = self.feature_stream.out_dim
+        geo_stream_out_dim = self.geometric_stream.out_dim
+        fusion_in_dim = feature_stream_out_dim + geo_stream_out_dim
 
-        # Layers to project both streams to a common dimension
-        self.feature_proj = Linear(2 * feature_stream_out_dim, fusion_hidden_dim)
-        self.geo_proj = Linear(geo_out_dim, fusion_hidden_dim)
-
-        # Gating layer
-        self.gate_linear = Sequential(
-            Linear(2 * fusion_hidden_dim, fusion_hidden_dim),
-            ReLU(),
-            Linear(fusion_hidden_dim, fusion_hidden_dim),
-            torch.nn.Sigmoid()
-        )
-
-        # 4. Define the final Prediction Head
-        self.fusion_head = Sequential(
-            Linear(fusion_hidden_dim, fusion_hidden_dim // 2),
+        self.classifier = Sequential(
+            Linear(fusion_in_dim, fusion_in_dim // 2),
             ReLU(),
             Dropout(p=dropout),
-            Linear(fusion_hidden_dim // 2, out_channels)
+            Linear(fusion_in_dim // 2, out_channels)
         )
 
     def forward(self, data) -> Tensor:
-        # Extract all necessary data from the batch object
-        atom_x, atom_adj_t = data.atom_x, data.atom_adj_t
-        residue_x, residue_adj_t = data.residue_x, data.residue_adj_t
-        atom_to_residue_map = data.atom_to_residue_map
-        lap_pe = data.lap_pe
-        edge_index = data.edge_index # The edges we want to predict
-
-        # 1. Get residue embeddings from the feature stream
-        residue_embeds = self.feature_stream(
-            atom_x, atom_adj_t,
-            residue_x, residue_adj_t,
-            atom_to_residue_map
+        # 1. Get feature embeddings from the feature stream
+        feature_embeds = self.feature_stream(
+            data.atom_x, data.atom_adj_t,
+            data.residue_x, data.residue_adj_t,
+            data.atom_to_residue_map
         )
 
         # 2. Get geometric embeddings from the geometric stream
-        # Note: we use residue_adj_t.to_edge_index() to get the edges
-        # of the residue graph that correspond to the PEs.
-        geometric_embeds = self.geometric_stream(
-            lap_pe, residue_adj_t.to_edge_index()
-        )
+        geo_embeds = self.geometric_stream(data.lap_pe)
 
-        # 3. Assemble node features and perform Gated Fusion
-        node_u_embeds = residue_embeds[edge_index[0]]
-        node_v_embeds = residue_embeds[edge_index[1]]
-        feature_embeds = torch.cat([node_u_embeds, node_v_embeds], dim=-1)
+        # 3. Fuse the node-level embeddings by concatenation
+        fused_embeds = torch.cat([feature_embeds, geo_embeds], dim=-1)
 
-        # Project both stream outputs into a common fusion space
-        proj_feat = F.relu(self.feature_proj(feature_embeds))
-        proj_geo = F.relu(self.geo_proj(geometric_embeds))
+        # 4. Classify each node using the fused representation
+        prediction = self.classifier(fused_embeds)
 
-        # Calculate the gate dynamically based on both projections
-        gate_input = torch.cat([proj_feat, proj_geo], dim=-1)
-        gate = self.gate_linear(gate_input)
-
-        # Apply the gate to fuse the representations
-        fused_embeds = (gate * proj_feat) + ((1 - gate) * proj_geo)
-
-        # 4. Make the final prediction using the fused representation
-        prediction = self.fusion_head(fused_embeds)
+        # Squeeze the last dimension to match target shape [N] for loss calculation
+        if prediction.shape[-1] == 1:
+            return prediction.squeeze(-1)
         return prediction 

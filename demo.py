@@ -19,10 +19,8 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 torch.manual_seed(42)
 
 def load_data(pkl_path):
-    if os.path.isdir(pkl_path):
-        return sum((pickle.load(open(os.path.join(pkl_path, f), 'rb'))
-                   for f in os.listdir(pkl_path) if f.endswith('.pkl')), [])
-    return pickle.load(open(pkl_path, 'rb'))
+    train_list = pickle.load(open(pkl_path, 'rb'))
+    return train_list
 
 
 def prepare_sample(sample, pe_dim, device):
@@ -47,13 +45,13 @@ def prepare_sample(sample, pe_dim, device):
     # Create SparseTensors for model input
     atom_adj_t = SparseTensor(
         row=atom_graph_for_weights.edge_index[0], col=atom_graph_for_weights.edge_index[1],
-        value=atom_graph_for_weights.edge_attr.squeeze(),
+        value=atom_graph_for_weights.edge_attr,
         sparse_sizes=(len(atom_graph_for_weights.x), len(atom_graph_for_weights.x))
     ).t()
 
     residue_adj_t = SparseTensor(
         row=residue_graph_for_weights.edge_index[0], col=residue_graph_for_weights.edge_index[1],
-        value=residue_graph_for_weights.edge_attr.squeeze(),
+        value=residue_graph_for_weights.edge_attr,
         sparse_sizes=(len(residue_graph_for_weights.x), len(residue_graph_for_weights.x))
     ).t()
 
@@ -69,8 +67,9 @@ def prepare_sample(sample, pe_dim, device):
     )
 
     # Add Laplacian PE to the residue graph representation
-    # We create a temporary data object for this, as the PE is based on residue connectivity
-    residue_graph_for_pe = Data(x=data.residue_x, edge_index=data.residue_adj_t.to_edge_index())
+    # We create a temporary data object for this. It only needs the number of nodes
+    # and the edge connectivity, not the node features themselves.
+    residue_graph_for_pe = Data(num_nodes=data.residue_x.size(0), edge_index=data.edge_index)
     residue_graph_for_pe = add_laplacian_pe(residue_graph_for_pe, pe_dim=pe_dim)
     data.lap_pe = residue_graph_for_pe.lap_pe
 
@@ -160,9 +159,6 @@ def main(args):
     # --- 1. 加载并划分数据集 ---
     print("加载并划分数据...")
     all_proteins = load_data(args.data_path)
-    if not all_proteins:
-        print("Error: Data list is empty.")
-        return
 
     # 设置随机种子以保证每次划分一致
     np.random.seed(args.seed)
@@ -189,9 +185,6 @@ def main(args):
     geo_hidden_dim = 128
     geo_out_dim = 64
 
-    # Fusion dimension
-    fusion_hidden_dim = 128
-
     model = DualStreamPPI(
         atom_in_channels=atom_in_channels,
         residue_in_channels=residue_in_channels,
@@ -200,13 +193,12 @@ def main(args):
         pe_dim=PE_DIM,
         geo_hidden_dim=geo_hidden_dim,
         geo_out_dim=geo_out_dim,
-        fusion_hidden_dim=fusion_hidden_dim,
         out_channels=out_channels,
         dropout=args.dropout,
         heads=4
     ).to(device)
     print("模型已成功初始化 (DualStreamPPI):")
-    print(model)
+    # print(model)
 
     # --- 3. 设置优化器和调度器 ---
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
@@ -258,7 +250,7 @@ def main(args):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Train ProteinGNN for PPI using a fixed 80/20 split')
+    parser = argparse.ArgumentParser(description='Train DualStreamPPI for PPI using a fixed 80/20 split')
     parser.add_argument('--data_path', type=str, required=True, help='Path to the data pkl file')
     parser.add_argument('--model_dir', type=str, default='./saved_models', help='Directory to save models')
     parser.add_argument('--plot_dir', type=str, default='./plots', help='Directory to save loss plots')
@@ -266,7 +258,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--lr', type=float, default=4e-4, help='Learning rate')
     parser.add_argument('--weight_decay', type=float, default=4e-4, help='Weight decay')
-    parser.add_argument('--dropout', type=float, default=0.5, help='Dropout rate')
+    parser.add_argument('--dropout', type=float, default=0.6, help='Dropout rate')
     
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size for gradient accumulation')
     parser.add_argument('--epochs', type=int, default=100, help='Number of epochs')

@@ -46,12 +46,12 @@ def prepare_sample(sample, pe_dim, device):
     # Create SparseTensors for model input
     atom_adj_t = SparseTensor(
         row=atom_graph_for_weights.edge_index[0], col=atom_graph_for_weights.edge_index[1],
-        value=atom_graph_for_weights.edge_attr.squeeze(),
+        value=atom_graph_for_weights.edge_attr,
         sparse_sizes=(len(atom_graph_for_weights.x), len(atom_graph_for_weights.x))
     ).t()
     residue_adj_t = SparseTensor(
         row=residue_graph_for_weights.edge_index[0], col=residue_graph_for_weights.edge_index[1],
-        value=residue_graph_for_weights.edge_attr.squeeze(),
+        value=residue_graph_for_weights.edge_attr,
         sparse_sizes=(len(residue_graph_for_weights.x), len(residue_graph_for_weights.x))
     ).t()
 
@@ -67,7 +67,9 @@ def prepare_sample(sample, pe_dim, device):
     )
 
     # Add Laplacian PE to the residue graph representation
-    residue_graph_for_pe = Data(x=data.residue_x, edge_index=data.residue_adj_t.to_edge_index())
+    # We create a temporary data object for this. It only needs the number of nodes
+    # and the edge connectivity, not the node features themselves.
+    residue_graph_for_pe = Data(num_nodes=data.residue_x.size(0), edge_index=data.edge_index)
     residue_graph_for_pe = add_laplacian_pe(residue_graph_for_pe, pe_dim=pe_dim)
     data.lap_pe = residue_graph_for_pe.lap_pe
 
@@ -119,9 +121,6 @@ def main(args):
     geo_hidden_dim = 128
     geo_out_dim = 64
 
-    # Fusion dimension (must match demo.py)
-    fusion_hidden_dim = 128
-
     model = DualStreamPPI(
         atom_in_channels=atom_in_channels,
         residue_in_channels=residue_in_channels,
@@ -130,7 +129,6 @@ def main(args):
         pe_dim=args.pe_dim,
         geo_hidden_dim=geo_hidden_dim,
         geo_out_dim=geo_out_dim,
-        fusion_hidden_dim=fusion_hidden_dim,
         out_channels=out_channels,
         heads=4,
         dropout=args.dropout
