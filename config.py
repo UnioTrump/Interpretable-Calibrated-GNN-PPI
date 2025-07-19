@@ -1,29 +1,34 @@
 import torch
 
-class DefaultConfig(object):
-    train_dataset_path = r'data\\train355-r5.5-a2.3.pkl'
-    test_dataset_path = r'data\\Test60.pkl'
-    save_path = r'Model_saved'
+# General
+DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+SEED = 42
+PROJECT_NAME = "DualStreamPPI_v2"
 
-    epochs = 100
-    learning_rate = 1e-3
-    weight_decay = 1e-4
-    dropout_rate = 0.2
-    split_rate = 0.8
-    batch_size = 24
-    temperature = 0.07
+# Data
+DATA_PATH = r'/gz-data/Train/Train335.pkl'
+VAL_DATA_PATH = r'/gz-data/Test/Test70.pkl'
+PE_DIM = 16
+GAUSSIAN_SIGMA = 1.0
 
-    # Pre_train
-    low_hid_dim=128
-    high_hid_dim=256
-    scenario_dim=256
-    high_out_dim=128
+# Model
+ATOM_HIDDEN_DIMS = [64, 128]
+RESIDUE_HIDDEN_DIMS = [256, 256, 128]
+GEO_HIDDEN_DIMS = [64, 128]
+FUSION_HIDDEN_DIM = 128
+OUT_CHANNELS = 1
+HEADS = 4
+DROPOUT = 0.5
 
-    # mlp
-    mlp_dim = 128
-    mlp_hid_dim = 128
-    mlp_out_dim = 1
-
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-    seeds = [649737]
+# Training
+EPOCHS = 100
+BATCH_SIZE = 16
+LEARNING_RATE = 2e-4
+WEIGHT_DECAY = 1e-4
+POS_WEIGHT = 1
+GRAD_NORM = 1.0
+PATIENCE = 8
+MODEL_DIR = './saved_models'
+PLOT_DIR = './plots'
+SCHEDULER_T_MAX = EPOCHS // 2
+SCHEDULER_ETA_MIN = 1e-6

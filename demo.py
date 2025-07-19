@@ -8,27 +8,20 @@ from torch_sparse import SparseTensor
 from utils.losses import WeightedCrossEntropy
 from utils.metrics import calculate_metrics
 from utils.find_best_thre import find_best_threshold_by_f_beta
-# Import the new model and the PE utility
-from GASPPI.model.dual_stream import DualStreamPPI
+from GASPPI.model.dual_stream import DualStreamPPI, FeatureStreamOnlyPPI
 from GASPPI.utils import add_gaussian_edge_weights, add_laplacian_pe
 from torch_geometric.data import Data
 import matplotlib.pyplot as plt
-import argparse
+import config
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-torch.manual_seed(42)
+device = config.DEVICE
+torch.manual_seed(config.SEED)
 
 def load_data(pkl_path):
     train_list = pickle.load(open(pkl_path, 'rb'))
     return train_list
 
-
-def prepare_sample(sample, pe_dim, device):
-    """
-    Converts a single sample dictionary into a torch_geometric.data.Data object,
-    computes Gaussian edge weights, and adds Laplacian Positional Encodings.
-    """
-    # Create separate Data objects for atom and residue graphs to compute weights
+def prepare_sample(sample, device):
     atom_graph_for_weights = Data(
         x=torch.FloatTensor(sample['atom_graph_node']),
         edge_index=torch.LongTensor(sample['atom_graph_edge']),
@@ -38,11 +31,9 @@ def prepare_sample(sample, pe_dim, device):
         edge_index=torch.LongTensor(sample['residue_graph_edge']),
     )
 
-    # Compute Gaussian edge weights
-    atom_graph_for_weights = add_gaussian_edge_weights(atom_graph_for_weights, sigma=1.0)
-    residue_graph_for_weights = add_gaussian_edge_weights(residue_graph_for_weights, sigma=1.0)
+    atom_graph_for_weights = add_gaussian_edge_weights(atom_graph_for_weights, sigma=config.GAUSSIAN_SIGMA)
+    residue_graph_for_weights = add_gaussian_edge_weights(residue_graph_for_weights, sigma=config.GAUSSIAN_SIGMA)
 
-    # Create SparseTensors for model input
     atom_adj_t = SparseTensor(
         row=atom_graph_for_weights.edge_index[0], col=atom_graph_for_weights.edge_index[1],
         value=atom_graph_for_weights.edge_attr,
@@ -55,66 +46,60 @@ def prepare_sample(sample, pe_dim, device):
         sparse_sizes=(len(residue_graph_for_weights.x), len(residue_graph_for_weights.x))
     ).t()
 
-    # Now, create the main Data object for the DualStream model
     data = Data(
         atom_x=torch.FloatTensor(sample['atom_graph_node']),
         atom_adj_t=atom_adj_t,
         residue_x=torch.FloatTensor(sample['residue_graph_node']),
         residue_adj_t=residue_adj_t,
-        edge_index=torch.LongTensor(sample['residue_graph_edge']), # Edges to predict
+        edge_index=torch.LongTensor(sample['residue_graph_edge']),
         y=torch.LongTensor(sample['label']),
         atom_to_residue_map=torch.tensor(sample['a2r_map'])
     )
 
-    # Add Laplacian PE to the residue graph representation
-    # We create a temporary data object for this. It only needs the number of nodes
-    # and the edge connectivity, not the node features themselves.
     residue_graph_for_pe = Data(num_nodes=data.residue_x.size(0), edge_index=data.edge_index)
-    residue_graph_for_pe = add_laplacian_pe(residue_graph_for_pe, pe_dim=pe_dim)
+    residue_graph_for_pe = add_laplacian_pe(residue_graph_for_pe, pe_dim=config.PE_DIM)
     data.lap_pe = residue_graph_for_pe.lap_pe
 
     return data.to(device)
 
-
-def train(model, train_proteins, optimizer, batch_size, pos_weight, pe_dim, grad_norm=None):
+def train(model, train_proteins, optimizer):
     model.train()
     np.random.shuffle(train_proteins)
 
     total_loss = 0
-    criterion = WeightedCrossEntropy(pos_wt=pos_weight, device=device)
+    criterion = WeightedCrossEntropy(pos_wt=torch.tensor(config.POS_WEIGHT, device=device), device=device)
 
-    for i in range(0, len(train_proteins), batch_size):
-        batch_proteins = train_proteins[i:i + batch_size]
+    for i in range(0, len(train_proteins), config.BATCH_SIZE):
+        batch_proteins = train_proteins[i:i + config.BATCH_SIZE]
         optimizer.zero_grad()
 
         batch_loss_sum = 0
         for protein in batch_proteins:
-            data = prepare_sample(protein, pe_dim, device)
-            out = model(data) # Model now takes the full data object
+            data = prepare_sample(protein, device)
+            out = model(data)
             loss = criterion.compute_loss(out, data.y)
             batch_loss_sum += loss.item()
             loss = loss / len(batch_proteins)
             loss.backward()
 
-        if grad_norm is not None:
-            torch.nn.utils.clip_grad_norm_(model.parameters(), grad_norm)
+        if config.GRAD_NORM is not None:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), config.GRAD_NORM)
 
         optimizer.step()
         total_loss += batch_loss_sum
 
     return total_loss / len(train_proteins)
 
-
 @torch.no_grad()
-def test(model, val_proteins, pos_weight, pe_dim):
+def test(model, val_proteins):
     model.eval()
-    criterion = WeightedCrossEntropy(pos_wt=pos_weight, device=device)
+    criterion = WeightedCrossEntropy(pos_wt=torch.tensor(config.POS_WEIGHT, device=device), device=device)
     total_loss = 0
     all_probs, all_targets = [], []
 
     for val_p in val_proteins:
-        data = prepare_sample(val_p, pe_dim, device)
-        out = model(data) # Model now takes the full data object
+        data = prepare_sample(val_p, device)
+        out = model(data)
         loss = criterion.compute_loss(out, data.y)
         total_loss += loss.item()
         all_probs.append(torch.sigmoid(out))
@@ -152,75 +137,57 @@ def plot_loss_curves(train_losses, val_losses, save_path='loss_curves.png'):
     print(f"Loss curve saved to: {save_path}")
     plt.close()
 
-def main(args):
-    POS_WEIGHT = torch.tensor(args.pos_weight, device=device)
-    PE_DIM = args.pe_dim # Get PE dimension from args
+def main():
 
-    # --- 1. 加载并划分数据集 ---
-    print("加载并划分数据...")
-    all_proteins = load_data(args.data_path)
+    all_proteins = load_data(config.DATA_PATH)
 
-    # 设置随机种子以保证每次划分一致
-    np.random.seed(args.seed)
+    np.random.seed(config.SEED)
     np.random.shuffle(all_proteins)
     
     split_index = int(len(all_proteins) * 0.8)
     train_data = all_proteins[:split_index]
-    val_data   = all_proteins[split_index:]
-    print('train_data', len(train_data))
-    print('val_data', len(val_data))
+    val_data = all_proteins[split_index:]
+    print(f'Training samples: {len(train_data)}')
+    print(f'Validation samples: {len(val_data)}')
 
-    # --- 2. 初始化模型 ---
-    # 从第一个数据样本中动态获取维度信息
     sample_data = all_proteins[0]
     atom_in_channels = sample_data['atom_graph_node'].shape[1]
     residue_in_channels = sample_data['residue_graph_node'].shape[1]
-    out_channels = 1 # 二分类
 
-    # 定义具有层次结构的隐藏维度
-    atom_hidden_dims = [128, 256, 128]
-    residue_hidden_dims = [256, 512, 256, 128]
+    # Temporarily switch to the ablation model for diagnostics
+    model_class = FeatureStreamOnlyPPI 
+    print(f"--- DIAGNOSTIC RUN: Using {model_class.__name__} ---")
 
-    # Geometric stream dimensions
-    geo_hidden_dim = 128
-    geo_out_dim = 64
-
-    model = DualStreamPPI(
+    model = model_class(
         atom_in_channels=atom_in_channels,
         residue_in_channels=residue_in_channels,
-        atom_hidden_dims=atom_hidden_dims,
-        residue_hidden_dims=residue_hidden_dims,
-        pe_dim=PE_DIM,
-        geo_hidden_dim=geo_hidden_dim,
-        geo_out_dim=geo_out_dim,
-        out_channels=out_channels,
-        dropout=args.dropout,
-        heads=4
+        atom_hidden_dims=config.ATOM_HIDDEN_DIMS,
+        residue_hidden_dims=config.RESIDUE_HIDDEN_DIMS,
+        pe_dim=config.PE_DIM,
+        geo_hidden_dims=config.GEO_HIDDEN_DIMS,
+        fusion_hidden_dim=config.FUSION_HIDDEN_DIM,
+        out_channels=config.OUT_CHANNELS,
+        dropout=config.DROPOUT,
+        heads=config.HEADS
     ).to(device)
-    print("模型已成功初始化 (DualStreamPPI):")
-    # print(model)
 
-    # --- 3. 设置优化器和调度器 ---
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-    # scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=args.patience // 2, verbose=True)
-    scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs // 2, eta_min=1e-6)
-
+    optimizer = torch.optim.AdamW(model.parameters(), lr=config.LEARNING_RATE, weight_decay=config.WEIGHT_DECAY)
+    scheduler = CosineAnnealingLR(optimizer, T_max=config.SCHEDULER_T_MAX, eta_min=config.SCHEDULER_ETA_MIN)
 
     best_pr_auc = 0.0
     patience_counter = 0
-    os.makedirs(args.model_dir, exist_ok=True)
-    best_model_path = os.path.join(args.model_dir, 'best_model.pth')
+    os.makedirs(config.MODEL_DIR, exist_ok=True)
+    best_model_path = os.path.join(config.MODEL_DIR, 'best_model.pth')
     
-    # --- 4. 开始训练循环 ---
-    print("开始训练...")
+    print("Starting training...")
     train_losses, val_losses = [], []
-    epoch_pbar = tqdm(range(args.epochs), desc="Training Progress", ncols=180)
+    epoch_pbar = tqdm(range(config.EPOCHS), desc="Training Progress", ncols=180)
 
     for epoch in epoch_pbar:
-        train_loss = train(model, train_data, optimizer, args.batch_size, POS_WEIGHT, pe_dim=PE_DIM, grad_norm=1.0)
+        train_loss = train(model, train_data, optimizer)
         train_losses.append(train_loss)
 
-        val_loss, metrics, best_threshold = test(model, val_data, POS_WEIGHT, pe_dim=PE_DIM)
+        val_loss, metrics, best_threshold = test(model, val_data)
         val_losses.append(val_loss)
         
         pr_auc = metrics['pr_auc']
@@ -230,41 +197,21 @@ def main(args):
             best_pr_auc = pr_auc
             patience_counter = 0
             torch.save(model.state_dict(), best_model_path)
-            # print(f"Epoch {epoch+1}: New best model saved with PR_AUC: {pr_auc:.4f}")
         else:
             patience_counter += 1
 
         epoch_pbar.set_postfix({
             'Train Loss': f'{train_loss:.4f}', 'Val Loss': f'{val_loss:.4f}',
             'Val PR_AUC': f'{pr_auc:.4f}', 'Val ROC_AUC': f'{metrics["roc_auc"]:.4f}',
-            'Patience': f'{patience_counter}/{args.patience}'
+            'Patience': f'{patience_counter}/{config.PATIENCE}'
         })
 
-        if patience_counter >= args.patience:
+        if patience_counter >= config.PATIENCE:
             print(f"\nEarly stopping at epoch {epoch + 1}")
             break
 
-    # --- 6. 绘制损失曲线 ---
-    plot_save_path = os.path.join(args.plot_dir, 'loss_curve.png')
+    plot_save_path = os.path.join(config.PLOT_DIR, f'{config.PROJECT_NAME}_loss_curve.png')
     plot_loss_curves(train_losses, val_losses, save_path=plot_save_path)
 
-
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Train DualStreamPPI for PPI using a fixed 80/20 split')
-    parser.add_argument('--data_path', type=str, required=True, help='Path to the data pkl file')
-    parser.add_argument('--model_dir', type=str, default='./saved_models', help='Directory to save models')
-    parser.add_argument('--plot_dir', type=str, default='./plots', help='Directory to save loss plots')
-    parser.add_argument('--seed', type=int, default=42, help='Random seed for data splitting')
-
-    parser.add_argument('--lr', type=float, default=4e-4, help='Learning rate')
-    parser.add_argument('--weight_decay', type=float, default=4e-4, help='Weight decay')
-    parser.add_argument('--dropout', type=float, default=0.6, help='Dropout rate')
-    
-    parser.add_argument('--batch_size', type=int, default=32, help='Batch size for gradient accumulation')
-    parser.add_argument('--epochs', type=int, default=100, help='Number of epochs')
-    parser.add_argument('--patience', type=int, default=10, help='Patience for early stopping')
-    parser.add_argument('--pos_weight', type=float, default=1.0, help='Positive weight for BCE loss')
-    parser.add_argument('--pe_dim', type=int, default=16, help='Dimension of Laplacian Positional Encodings')
-    
-    args = parser.parse_args()
-    main(args)
+    main()
