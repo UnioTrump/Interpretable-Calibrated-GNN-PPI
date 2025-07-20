@@ -28,8 +28,10 @@ def prepare_sample(sample, device):
         edge_index=torch.LongTensor(sample['residue_graph_edge']),
     )
 
-    atom_graph_for_weights = add_gaussian_edge_weights(atom_graph_for_weights, sigma=config.GAUSSIAN_SIGMA)
-    residue_graph_for_weights = add_gaussian_edge_weights(residue_graph_for_weights, sigma=config.GAUSSIAN_SIGMA)
+    atom_graph_for_weights = add_gaussian_edge_weights(atom_graph_for_weights,
+                                                       sigma=config.GAUSSIAN_SIGMA)
+    residue_graph_for_weights = add_gaussian_edge_weights(residue_graph_for_weights,
+                                                          sigma=config.GAUSSIAN_SIGMA)
 
     atom_adj_t = SparseTensor(
         row=atom_graph_for_weights.edge_index[0], col=atom_graph_for_weights.edge_index[1],
