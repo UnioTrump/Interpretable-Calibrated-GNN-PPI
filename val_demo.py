@@ -3,10 +3,8 @@ import torch
 import pickle
 from tqdm import tqdm
 
-from utils.metrics import calculate_metrics
-from utils.find_best_thre import find_best_threshold_by_f_beta
-from GASPPI.model.dual_stream import DualStreamPPI, FeatureStreamOnlyPPI
-from GASPPI.utils import add_gaussian_edge_weights, add_laplacian_pe
+from utils import calculate_metrics, find_best_threshold_by_f_beta
+from GASPPI import add_gaussian_edge_weights, add_laplacian_pe, DualStreamPPI, FeatureStreamOnlyPPI
 from torch_geometric.data import Data
 from torch_sparse import SparseTensor
 import config
