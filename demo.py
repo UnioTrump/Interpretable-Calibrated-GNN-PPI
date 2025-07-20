@@ -15,8 +15,8 @@ device = config.DEVICE
 torch.manual_seed(config.SEED)
 
 def load_data(pkl_path):
-    train_list = pickle.load(open(pkl_path, 'rb'))
-    return train_list
+    return sum((pickle.load(open(os.path.join(pkl_path, f), 'rb'))
+               for f in os.listdir(pkl_path) if f.endswith('.pkl')), [])
 
 def prepare_sample(sample, device):
     atom_graph_for_weights = Data(
@@ -152,7 +152,7 @@ def main():
     residue_in_channels = sample_data['residue_graph_node'].shape[1]
 
     # Temporarily switch to the ablation model for diagnostics
-    model_class = FeatureStreamOnlyPPI 
+    model_class = DualStreamPPI
     print(f"--- DIAGNOSTIC RUN: Using {model_class.__name__} ---")
 
     model = model_class(

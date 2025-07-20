@@ -6,8 +6,8 @@ SEED = 42
 PROJECT_NAME = "DualStreamPPI_v2"
 
 # Data
-DATA_PATH = r'/gz-data/Train/Train335.pkl'
-VAL_DATA_PATH = r'/gz-data/Test/Test70.pkl'
+DATA_PATH = r'/gz-data/Train'
+VAL_DATA_PATH = r'/gz-data/Test/TestUB25.pkl'
 PE_DIM = 16
 GAUSSIAN_SIGMA = 1.0
 
@@ -22,9 +22,9 @@ DROPOUT = 0.5
 
 # Training
 EPOCHS = 100
-BATCH_SIZE = 16
-LEARNING_RATE = 2e-4
-WEIGHT_DECAY = 1e-4
+BATCH_SIZE = 32
+LEARNING_RATE = 4e-4
+WEIGHT_DECAY = 4e-4
 POS_WEIGHT = 1
 GRAD_NORM = 1.0
 PATIENCE = 8

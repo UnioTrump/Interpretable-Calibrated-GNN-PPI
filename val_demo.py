@@ -92,8 +92,7 @@ def main():
     atom_in_channels = sample_data['atom_graph_node'].shape[1]
     residue_in_channels = sample_data['residue_graph_node'].shape[1]
 
-    # Temporarily switch to the ablation model for diagnostics
-    model_class = FeatureStreamOnlyPPI
+    model_class = DualStreamPPI
     print(f"--- DIAGNOSTIC RUN: Using {model_class.__name__} ---")
 
     model = model_class(
