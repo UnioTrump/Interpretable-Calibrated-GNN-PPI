@@ -9,10 +9,7 @@ from .base import ProteinGNN
 
 
 class FeatureStreamOnlyPPI(torch.nn.Module):
-    """
-    An ablation model that uses ONLY the feature stream (ProteinGNN) to serve
-    as a baseline and help diagnose performance issues.
-    """
+    """Ablation model using only the feature stream."""
     def __init__(self,
                  atom_in_channels, residue_in_channels,
                  atom_hidden_dims, residue_hidden_dims,

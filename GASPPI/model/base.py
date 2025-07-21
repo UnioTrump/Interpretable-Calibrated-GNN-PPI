@@ -8,10 +8,6 @@ from typing import Optional
 
 
 class GNNEncoder(torch.nn.Module):
-    """
-    A powerful and flexible GNN encoder that utilizes TransformerConv layers,
-    LayerNorm, Dropout, and JumpingKnowledge to learn rich node representations.
-    """
     def __init__(self, in_channels: int, hidden_dims: list, edge_dim: Optional[int] = None,
                  heads: int = 4, dropout: float = 0.2):
         super().__init__()
@@ -58,11 +54,6 @@ class GNNEncoder(torch.nn.Module):
 
 
 class ProteinGNN(torch.nn.Module):
-    """
-    The Feature/Topology Stream of our Dual-Stream model.
-    It processes atom-level graphs, pools features to the residue level,
-    and then processes the resulting residue-level graph.
-    """
     def __init__(self,
                  atom_in_channels,
                  residue_in_channels,

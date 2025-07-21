@@ -9,10 +9,7 @@ from .base import GNNEncoder, ProteinGNN
 
 
 class GatedFusion(torch.nn.Module):
-    """
-    A gated fusion mechanism to adaptively combine feature and geometric streams.
-    It learns a gate vector to weigh the importance of each stream's features.
-    """
+    """Gated fusion of two streams."""
     def __init__(self, feature_dim: int, geo_dim: int, hidden_dim: int):
         super().__init__()
         self.feature_proj = Linear(feature_dim, hidden_dim)
@@ -32,10 +29,7 @@ class GatedFusion(torch.nn.Module):
 
 
 class DualStreamPPI(torch.nn.Module):
-    """
-    The complete Dual-Stream PPI prediction model. It combines a feature stream
-    and a geometric stream to make predictions for each residue (node).
-    """
+    """Dual-stream model for PPI prediction."""
     def __init__(self,
                  atom_in_channels, residue_in_channels,
                  atom_hidden_dims, residue_hidden_dims,

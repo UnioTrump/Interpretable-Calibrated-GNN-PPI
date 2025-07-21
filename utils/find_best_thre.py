@@ -2,12 +2,7 @@ import numpy as np
 from sklearn.metrics import precision_score, recall_score, matthews_corrcoef
 
 def find_best_threshold_by_f_beta(y_true, y_scores, num_threshold, beta=1.5):
-    """
-        通过Fβ寻找最佳阈值
-
-        Args:
-            beta: precision和recall的权重值
-    """
+    """Find the best threshold by maximizing the F-beta score."""
 
     thresholds = np.linspace(0, 1, num_threshold)
     y_true = y_true.cpu().numpy()

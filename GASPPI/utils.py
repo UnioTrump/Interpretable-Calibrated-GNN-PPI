@@ -4,17 +4,7 @@ from torch_geometric.transforms import AddLaplacianEigenvectorPE
 
 
 def add_gaussian_edge_weights(data: Data, sigma: float = 1.0) -> Data:
-    """
-    Computes edge weights based on the Gaussian kernel of node features and adds
-    them to the data object as `edge_attr`.
-
-    Args:
-        data (Data): The graph data object, containing `data.x` and `data.edge_index`.
-        sigma (float): The sigma parameter for the Gaussian kernel.
-
-    Returns:
-        Data: The data object with `edge_attr` added.
-    """
+    """Computes and adds Gaussian kernel edge weights."""
     node_features = data.x
     edge_index = data.edge_index
 
@@ -34,17 +24,7 @@ def add_gaussian_edge_weights(data: Data, sigma: float = 1.0) -> Data:
 
 
 def add_laplacian_pe(data: Data, pe_dim: int) -> Data:
-    """
-    Computes the Laplacian Positional Encodings for the graph and adds them
-    to the data object.
-
-    Args:
-        data (Data): The graph data object.
-        pe_dim (int): The dimension of the positional encodings.
-
-    Returns:
-        Data: The data object with `lap_pe` added.
-    """
+    """Computes and adds Laplacian Positional Encodings."""
     transform = AddLaplacianEigenvectorPE(
         k=pe_dim,
         attr_name='lap_pe',
