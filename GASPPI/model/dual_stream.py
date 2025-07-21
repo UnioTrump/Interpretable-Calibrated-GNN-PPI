@@ -48,11 +48,10 @@ class DualStreamPPI(torch.nn.Module):
             dropout=dropout
         )
 
-        # Geometric/Positional Stream (processes PEs on the residue graph)
         self.geometric_stream = GNNEncoder(
             in_channels=pe_dim,
             hidden_dims=geo_hidden_dims,
-            edge_dim=None,  # PEs are node features, not edge dependent
+            edge_dim=None,
             heads=heads,
             dropout=dropout
         )
@@ -76,8 +75,7 @@ class DualStreamPPI(torch.nn.Module):
             data.residue_x, data.residue_adj_t,
             data.atom_to_residue_map
         )
-        
-        # only need the topology, not the edge weights, remove the edge attributes (value).
+
         geo_adj_t = data.residue_adj_t.clone().set_value_(None, layout='coo')
         geo_embeds = self.geometric_stream(data.lap_pe, geo_adj_t)
         
@@ -85,7 +83,6 @@ class DualStreamPPI(torch.nn.Module):
         
         prediction = self.classifier(fused_embeds)
 
-        # Squeeze the last dimension to match target shape [N] for loss calculation
         if prediction.shape[-1] == 1:
             return prediction.squeeze(-1)
         return prediction 
