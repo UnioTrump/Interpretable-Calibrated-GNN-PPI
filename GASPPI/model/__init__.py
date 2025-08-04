@@ -1,10 +1,8 @@
-from .base import GNNEncoder, ProteinGNN
-from .dual_stream import DualStreamPPI
-from .feature_stream_only import FeatureStreamOnlyPPI
+from .base import TransformerConvLayer, UnifiedEncoderBlock
+from .dual_stream import H_GNNMambaPPI
 
 __all__ = [
-    'GNNEncoder',
-    'ProteinGNN',
-    'DualStreamPPI',
-    'FeatureStreamOnlyPPI',
+    'TransformerConvLayer',
+    'UnifiedEncoderBlock',
+    'H_GNNMambaPPI'
 ]
