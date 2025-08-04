@@ -56,6 +56,11 @@ def prepare_sample(sample, device):
     label_list = [int(char) for char in sample['label']]
     label_tensor = torch.as_tensor(label_list, dtype=torch.float)
 
+    # --- New: Generate residue_seq_ids from one-hot encoded residue features ---
+    # Assuming the first 21 features of r_node are one-hot encoding for amino acids
+    residue_one_hot = torch.as_tensor(sample['r_node'][:, :21], dtype=torch.float)
+    residue_seq_ids = torch.argmax(residue_one_hot, dim=1).long()
+
     data = Data(
         atom_x=torch.as_tensor(sample['a_node'], dtype=torch.float),
         atom_adj_t=atom_adj_t,
@@ -64,6 +69,7 @@ def prepare_sample(sample, device):
         residue_x=torch.as_tensor(sample['r_node'], dtype=torch.float),
         residue_adj_t=residue_adj_t,
         residue_edge_attr=residue_edge_attr,
+        residue_seq_ids=residue_seq_ids,  # Add the new attribute here
         y=label_tensor,
     )
 
@@ -138,6 +144,8 @@ def main():
         hidden_dim=config.HIDDEN_DIM,
         num_atom_layers=config.NUM_ATOM_LAYERS,
         num_residue_layers=config.NUM_RESIDUE_LAYERS,
+        num_seq_layers=config.NUM_SEQ_LAYERS,
+        vocab_size=config.VOCAB_SIZE,
         out_channels=config.OUT_CHANNELS,
         mamba_d_state=config.MAMBA_D_STATE,
         mamba_d_conv=config.MAMBA_D_CONV,

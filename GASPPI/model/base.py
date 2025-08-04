@@ -44,43 +44,48 @@ class TransformerConvLayer(torch.nn.Module):
 
 class InteractionBlock(nn.Module):
     """
-    A configurable block for processing sequence and graph data, acting as
-    the main building block for the protein encoders.
+    A versatile interaction block that can combine GNN and Mamba layers.
+    The execution of GNN and Mamba layers can be controlled via flags.
     """
     def __init__(self,
                  hidden_dim: int,
+                 heads: int,
+                 dropout: float,
                  use_gnn: bool = True,
                  use_mamba: bool = True,
                  mamba_d_state: int = 16,
                  mamba_d_conv: int = 4,
                  mamba_expand: int = 2,
-                 heads: int = 4,
-                 dropout: float = 0.2,
-                 edge_dim: Optional[int] = 1):
+                 edge_dim: Optional[int] = None):
         super().__init__()
-        
         self.use_gnn = use_gnn
         self.use_mamba = use_mamba
 
         if self.use_gnn:
-            self.gnn_layer = TransformerConvLayer(hidden_dim, hidden_dim, heads, dropout, edge_dim=edge_dim)
-            self.gnn_norm = LayerNorm(hidden_dim)
+            self.gnn_layer = TransformerConvLayer(hidden_dim, hidden_dim, heads, dropout, edge_dim)
+            self.gnn_norm = nn.LayerNorm(hidden_dim)
 
         if self.use_mamba:
             if Mamba is None:
                 raise ImportError("Mamba-ssm is not installed. Please install it with `pip install mamba-ssm causal-conv1d`")
-            self.mamba_layer = Mamba(d_model=hidden_dim, d_state=mamba_d_state, d_conv=mamba_d_conv, expand=mamba_expand)
-            self.mamba_norm = LayerNorm(hidden_dim)
+            self.mamba_layer = Mamba(
+                d_model=hidden_dim,
+                d_state=mamba_d_state,
+                d_conv=mamba_d_conv,
+                expand=mamba_expand,
+            )
+            self.mamba_norm = nn.LayerNorm(hidden_dim)
 
         if self.use_gnn and self.use_mamba:
-            self.ffn = Sequential(
-                Linear(hidden_dim, hidden_dim * 4),
-                ReLU(),
-                Linear(hidden_dim * 4, hidden_dim)
+            self.ffn = nn.Sequential(
+                nn.Linear(hidden_dim, hidden_dim * 4),
+                nn.ReLU(),
+                nn.Dropout(dropout),
+                nn.Linear(hidden_dim * 4, hidden_dim)
             )
-            self.ffn_norm = LayerNorm(hidden_dim)
-        
-        self.dropout = Dropout(dropout)
+            self.ffn_norm = nn.LayerNorm(hidden_dim)
+
+        self.dropout = nn.Dropout(dropout)
 
     def forward(self, x: Tensor, adj_t: Optional[SparseTensor] = None, edge_attr: Optional[Tensor] = None) -> Tensor:
         
