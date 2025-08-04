@@ -39,6 +39,7 @@ def prepare_sample(sample, device):
     atom_edge_attr = None
     if 'a_edge_feat' in sample:
         atom_edge_attr = torch.as_tensor(sample['a_edge_feat'], dtype=torch.float)
+        atom_edge_attr = atom_edge_attr / config.ATOM_DISTANCE_THRESHOLD
 
     # Residue-level graph
     row_r = torch.as_tensor(sample['r_edge_index'][0], dtype=torch.long)
@@ -52,6 +53,7 @@ def prepare_sample(sample, device):
     residue_edge_attr = None
     if 'r_edge_feat' in sample:
         residue_edge_attr = torch.as_tensor(sample['r_edge_feat'], dtype=torch.float)
+        residue_edge_attr = residue_edge_attr / config.RESIDUE_DISTANCE_THRESHOLD
 
     label_list = [int(char) for char in sample['label']]
     label_tensor = torch.as_tensor(label_list, dtype=torch.float)

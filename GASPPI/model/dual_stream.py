@@ -30,10 +30,10 @@ class H_GNNMambaPPI(nn.Module):
 
         # --- Input Projection Blocks ---
         self.residue_proj = nn.Sequential(
-            Linear(residue_in_channels, hidden_dim * 2),
+            Linear(residue_in_channels, hidden_dim * 3),
             nn.ReLU(),
             nn.Dropout(p=dropout),
-            Linear(hidden_dim * 2, hidden_dim)
+            Linear(hidden_dim * 3, hidden_dim)
         )
         self.atom_proj = nn.Sequential(
             Linear(atom_in_channels, hidden_dim),
