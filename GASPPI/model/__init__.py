@@ -1,8 +1,8 @@
-from .base import TransformerConvLayer, UnifiedEncoderBlock
+from .base import TransformerConvLayer, InteractionBlock
 from .dual_stream import H_GNNMambaPPI
 
 __all__ = [
     'TransformerConvLayer',
-    'UnifiedEncoderBlock',
+    'InteractionBlock',
     'H_GNNMambaPPI'
 ]

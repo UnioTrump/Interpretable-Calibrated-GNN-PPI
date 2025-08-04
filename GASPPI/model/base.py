@@ -5,15 +5,13 @@ from torch.nn import ModuleList, Linear, LayerNorm, Dropout, ReLU, Sequential
 from torch_geometric.nn import TransformerConv, global_mean_pool
 from torch_sparse import SparseTensor
 from torch import Tensor
-from typing import Optional, Tuple
+from typing import Optional
 
 try:
-    # 尝试新的导入路径
     from mamba_ssm.models.mixer_seq_simple import Mamba
     print("load Mamba Done!")
 except ImportError:
     try:
-        # 尝试旧的导入路径
         from mamba_ssm import Mamba
         print("load Mamba Done!")
     except ImportError:
@@ -44,10 +42,10 @@ class TransformerConvLayer(torch.nn.Module):
         return x
 
 
-class UnifiedEncoderBlock(nn.Module):
+class InteractionBlock(nn.Module):
     """
-    A unified, configurable block for processing sequence and graph data.
-    Can be used for atom-level encoding or residue-level interaction blocks.
+    A configurable block for processing sequence and graph data, acting as
+    the main building block for the protein encoders.
     """
     def __init__(self,
                  hidden_dim: int,
@@ -58,12 +56,11 @@ class UnifiedEncoderBlock(nn.Module):
                  mamba_expand: int = 2,
                  heads: int = 4,
                  dropout: float = 0.2,
-                 edge_dim: Optional[int] = 1):  # 默认边特征维度为1（欧氏距离）
+                 edge_dim: Optional[int] = 1):
         super().__init__()
         
         self.use_gnn = use_gnn
         self.use_mamba = use_mamba
-        self.hidden_dim = hidden_dim
 
         if self.use_gnn:
             self.gnn_layer = TransformerConvLayer(hidden_dim, hidden_dim, heads, dropout, edge_dim=edge_dim)
@@ -87,38 +84,35 @@ class UnifiedEncoderBlock(nn.Module):
 
     def forward(self, x: Tensor, adj_t: Optional[SparseTensor] = None, edge_attr: Optional[Tensor] = None) -> Tensor:
         
-        # --- GNN Branch ---
+        # --- GNN Branch with Residual Connection ---
         if self.use_gnn and adj_t is not None:
+            shortcut = x
             gnn_out = self.gnn_layer(x, adj_t, edge_attr)
-            x_after_gnn = x + self.dropout(gnn_out)
-            x_after_gnn = self.gnn_norm(x_after_gnn)
-        else:
-            x_after_gnn = x
+            x = shortcut + self.dropout(gnn_out)
+            x = self.gnn_norm(x)
 
-        # --- Mamba Branch ---
+        # --- Mamba Branch with Residual Connection ---
         if self.use_mamba:
-            # Mamba expects [batch, sequence_length, d_model]
-            if x_after_gnn.dim() == 2:
-                x_for_mamba = x_after_gnn.unsqueeze(0)
-            else:
-                x_for_mamba = x_after_gnn
+            shortcut = x
             
-            mamba_processed = self.mamba_layer(x_for_mamba)
+            # Dimension adaptation for Mamba
+            is_2d = x.dim() == 2
+            if is_2d:
+                x = x.unsqueeze(0)
             
-            if x_after_gnn.dim() == 2:
-                mamba_processed = mamba_processed.squeeze(0)
+            mamba_out = self.mamba_layer(x)
             
-            x_after_mamba = x_after_gnn + self.dropout(mamba_processed)
-            x_after_mamba = self.mamba_norm(x_after_mamba)
-        else:
-            x_after_mamba = x_after_gnn
+            if is_2d:
+                mamba_out = mamba_out.squeeze(0)
+            
+            x = shortcut + self.dropout(mamba_out)
+            x = self.mamba_norm(x)
 
-        # --- FFN Fusion ---
+        # --- FFN Block with Residual Connection ---
         if self.use_gnn and self.use_mamba:
-            ffn_out = self.ffn(x_after_mamba)
-            x_final = x_after_mamba + self.dropout(ffn_out)
-            x_final = self.ffn_norm(x_final)
-        else:
-            x_final = x_after_mamba
+            shortcut = x
+            ffn_out = self.ffn(x)
+            x = shortcut + self.dropout(ffn_out)
+            x = self.ffn_norm(x)
 
-        return x_final 
+        return x 

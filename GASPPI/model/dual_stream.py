@@ -4,12 +4,12 @@ from torch.nn import Linear, Dropout, ReLU, Sequential, ModuleList
 from torch import Tensor
 from torch_geometric.nn import global_mean_pool
 
-from .base import UnifiedEncoderBlock
+from .base import InteractionBlock
 
 class H_GNNMambaPPI(nn.Module):
     """
-    Hierarchical GNN-Mamba model for PPI prediction, built upon a unified,
-    configurable encoder block.
+    Hierarchical GNN-Mamba model for PPI prediction, featuring a dual-stream
+    architecture at the residue level.
     """
     def __init__(self,
                  atom_in_channels: int,
@@ -28,14 +28,23 @@ class H_GNNMambaPPI(nn.Module):
                  residue_edge_dim: int = 1):
         super().__init__()
 
-        # --- 1. Input Projection Layers ---
-        self.atom_proj = Linear(atom_in_channels, hidden_dim)
-        self.residue_proj = Linear(residue_in_channels, hidden_dim)
+        # --- Input Projection Blocks ---
+        self.residue_proj = nn.Sequential(
+            Linear(residue_in_channels, hidden_dim * 2),
+            nn.ReLU(),
+            nn.Dropout(p=dropout),
+            Linear(hidden_dim * 2, hidden_dim)
+        )
+        self.atom_proj = nn.Sequential(
+            Linear(atom_in_channels, hidden_dim),
+            nn.ReLU(),
+            Linear(hidden_dim, hidden_dim)
+        )
         self.pe_proj = Linear(pe_dim, hidden_dim)
 
-        # --- 2. Atom-level Encoder Stack ---
+        # --- Atom-level Encoder ---
         self.atom_encoder = ModuleList([
-            UnifiedEncoderBlock(
+            InteractionBlock(
                 hidden_dim=hidden_dim, use_gnn=True, use_mamba=True,
                 mamba_d_state=mamba_d_state, mamba_d_conv=mamba_d_conv,
                 mamba_expand=mamba_expand, heads=heads, dropout=dropout,
@@ -43,12 +52,11 @@ class H_GNNMambaPPI(nn.Module):
             ) for _ in range(num_atom_layers)
         ])
         
-        # --- 3. Residue-level Feature Fusion & Encoder Stack ---
-        # This projection unifies the concatenated features before the residue encoder
-        self.residue_fusion_proj = Linear(hidden_dim * 3, hidden_dim) # pooled_atom + residue + pe
-
-        self.residue_encoder = ModuleList([
-            UnifiedEncoderBlock(
+        # --- Residue-level Dual-Stream Encoders ---
+        self.feature_fusion_proj = Linear(hidden_dim * 2, hidden_dim)
+        
+        self.feature_encoder = ModuleList([
+            InteractionBlock(
                 hidden_dim=hidden_dim, use_gnn=True, use_mamba=True,
                 mamba_d_state=mamba_d_state, mamba_d_conv=mamba_d_conv,
                 mamba_expand=mamba_expand, heads=heads, dropout=dropout,
@@ -56,7 +64,16 @@ class H_GNNMambaPPI(nn.Module):
             ) for _ in range(num_residue_layers)
         ])
 
-        # --- 4. Final Classifier ---
+        self.geometry_encoder = ModuleList([
+            InteractionBlock(
+                hidden_dim=hidden_dim, use_gnn=True, use_mamba=False,
+                mamba_d_state=mamba_d_state, mamba_d_conv=mamba_d_conv,
+                mamba_expand=mamba_expand, heads=heads, dropout=dropout,
+                edge_dim=residue_edge_dim
+            ) for _ in range(num_residue_layers)
+        ])
+
+        # --- Final Classifier ---
         self.classifier = Sequential(
             Linear(hidden_dim, hidden_dim // 2),
             ReLU(),
@@ -66,29 +83,29 @@ class H_GNNMambaPPI(nn.Module):
 
     def forward(self, data) -> Tensor:
         
-        # 1. Project initial features
         atom_x = self.atom_proj(data.atom_x)
         residue_x = self.residue_proj(data.residue_x)
         pe_x = self.pe_proj(data.lap_pe)
 
-        # 2. Run through atom encoder stack
         for block in self.atom_encoder:
             atom_x = block(atom_x, data.atom_adj_t, data.atom_edge_attr)
 
-        # 3. Pool atomic features to residue level
         pooled_atom_x = global_mean_pool(atom_x, data.atom_to_residue_map)
         
-        # 4. Prepare input for residue encoder
-        # Concatenate residue features, pooled atom features, and positional encodings
-        residue_fused_x = torch.cat([residue_x, pooled_atom_x, pe_x], dim=-1)
-        residue_x = self.residue_fusion_proj(residue_fused_x)
+        # Feature Stream
+        feature_input = torch.cat([residue_x, pooled_atom_x], dim=-1)
+        feature_input = self.feature_fusion_proj(feature_input)
+        
+        for block in self.feature_encoder:
+            feature_input = block(feature_input, data.residue_adj_t, data.residue_edge_attr)
 
-        # 5. Run through residue encoder stack
-        for block in self.residue_encoder:
-            residue_x = block(residue_x, data.residue_adj_t, data.residue_edge_attr)
+        # Geometry Stream
+        for block in self.geometry_encoder:
+            pe_x = block(pe_x, data.residue_adj_t, data.residue_edge_attr)
             
-        # 6. Classify
-        prediction = self.classifier(residue_x)
+        final_embedding = feature_input + pe_x
+            
+        prediction = self.classifier(final_embedding)
 
         if prediction.shape[-1] == 1:
             return prediction.squeeze(-1)
