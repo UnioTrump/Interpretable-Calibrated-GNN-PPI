@@ -11,7 +11,7 @@ def find_best_threshold_by_f_beta(y_true, y_scores, num_threshold, beta=1.5):
     for threshold in thresholds:
         y_pred = (y_scores >= threshold).astype(int)
         precisions = precision_score(y_true, y_pred, zero_division=0)
-        recalls = recall_score(y_true, y_pred, zero_division=0)
+        recalls = recall_score(y_true, y_pred)
         f_beta = (1 + beta**2)*(precisions * recalls)/(beta**2*precisions+recalls) if (precisions + recalls) != 0 else 0
         f_beta_values.append(f_beta)
 

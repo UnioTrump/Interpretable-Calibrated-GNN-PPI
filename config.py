@@ -1,60 +1,60 @@
 import torch
 
-# --- GENERAL ---
-PROJECT_NAME = 'GASPPI_Mamba'
-DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
+# General
+DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 SEED = 42
+PROJECT_NAME = "EnhancedSpectralPPI_v3"
 
-# --- PATHS ---
-PLOT_DIR = './plots'
-MODEL_DIR = './models'
-
-# --- FEATURE CONFIG ---
-ATOM_DISTANCE_THRESHOLD = 4.5
-RESIDUE_DISTANCE_THRESHOLD = 6.0
-
-# --- MODEL HYPERPARAMETERS (shared for both stages) ---
-HIDDEN_DIM = 256
-OUT_CHANNELS = 1
-NUM_ATOM_LAYERS = 2
-NUM_RESIDUE_LAYERS = 4
-HEADS = 4
+# Data
+DATA_PATH = r'/gz-data/Train'
+VAL_DATA_PATH = r'/gz-data/Test/TestUB25.pkl'
 PE_DIM = 16
-DROPOUT = 0.2
+GAUSSIAN_SIGMA = 1.0
 
-# --- MAMBA CONFIG (shared for both stages) ---
-MAMBA_D_STATE = 16
-MAMBA_D_CONV = 4
-MAMBA_EXPAND = 2
+# Model
+ATOM_HIDDEN_DIMS = [64, 128]
+RESIDUE_HIDDEN_DIMS = [256, 256, 128]
+GEO_HIDDEN_DIMS = [64, 128]
+FUSION_HIDDEN_DIM = 128
+OUT_CHANNELS = 1
+HEADS = 4
+DROPOUT = 0.5
 
-# --- PRE-TRAINING CONFIG ---
-PRETRAIN = {
-    'DATA_PATH': './data/pretrain_dataset.pkl',  # <-- 请将这里替换为你的3960个蛋白质的数据集路径
-    'EPOCHS': 150,
-    'BATCH_SIZE': 32,
-    'LEARNING_RATE': 1e-4,
-    'WEIGHT_DECAY': 0.01,
-    'POS_WEIGHT': 1,
-    'GRAD_NORM': 1.0,
-    'PATIENCE': 20,
-    'SCHEDULER_T_MAX': 100,
-    'SCHEDULER_ETA_MIN': 1e-6,
-    'MODEL_SAVE_PATH': f'{MODEL_DIR}/{PROJECT_NAME}_pretrained.pth'
-}
+# Enhanced Spectral Attention Parameters
+MAX_EIGENVECTORS = 32  # 最大特征向量数量
+SPECTRAL_ENHANCED = True  # 是否启用谱增强
+TASK_TYPE = "general"  # 任务类型: "physical_interaction", "functional_association", "pathway_coregulation", "general"
+ENHANCEMENT_LEVEL = 2  # 增强级别: 0=原始, 1=部分增强, 2=完全增强
 
-# --- FINE-TUNING CONFIG ---
-FINETUNE = {
-    'PRETRAINED_PATH': PRETRAIN['MODEL_SAVE_PATH'],  # Automatically use the saved pre-trained model
-    'DATA_PATH': './data/Train_334.pkl', # <-- 这里使用你的334个蛋白质的数据集
-    'VAL_DATA_PATH': './data/Test_60.pkl', # <-- 用于微调时的验证集
-    'EPOCHS': 80,
-    'BATCH_SIZE': 16,
-    'LEARNING_RATE': 1e-5,  #  <-- 使用更小的学习率
-    'WEIGHT_DECAY': 0.01,
-    'POS_WEIGHT': 1,
-    'GRAD_NORM': 1.0,
-    'PATIENCE': 30,
-    'SCHEDULER_T_MAX': 50,
-    'SCHEDULER_ETA_MIN': 1e-6,
-    'MODEL_SAVE_PATH': f'{MODEL_DIR}/{PROJECT_NAME}_finetuned_best.pth'
-}
+# Multi-Scale Parameters
+NUM_SCALES = 3  # 多尺度数量 (低频、中频、高频)
+FREQ_THRESHOLD_LOW = 0.33  # 低频阈值
+FREQ_THRESHOLD_HIGH = 0.67  # 高频阈值
+
+# Adaptive Frequency Weighting (can be overridden by TASK_TYPE)
+FREQ_WEIGHT_HIGH = 0.33  # 高频权重
+FREQ_WEIGHT_MID = 0.34   # 中频权重  
+FREQ_WEIGHT_LOW = 0.33   # 低频权重
+
+# Training
+EPOCHS = 100
+BATCH_SIZE = 32
+LEARNING_RATE = 4e-4
+WEIGHT_DECAY = 4e-4
+POS_WEIGHT = 1
+GRAD_NORM = 1.0
+PATIENCE = 8
+MODEL_DIR = './saved_models'
+PLOT_DIR = './plots'
+SCHEDULER_T_MAX = EPOCHS // 2
+SCHEDULER_ETA_MIN = 1e-6
+
+# Experimental Settings
+USE_ENHANCED_DEMO = False  # 是否使用增强版demo
+COMPARE_MODELS = True     # 是否进行模型对比
+SAVE_SPECTRAL_INFO = True # 是否保存谱分析信息
+
+# Performance Monitoring
+LOG_SPECTRAL_STATS = True  # 记录谱统计信息
+PLOT_ATTENTION_WEIGHTS = False  # 绘制注意力权重（计算密集）
+SAVE_ATTENTION_MAPS = False     # 保存注意力图（存储密集）

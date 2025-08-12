@@ -1,8 +1,10 @@
-from .base import TransformerConvLayer, InteractionBlock
-from .dual_stream import H_GNNMambaPPI
+from .base import GNNEncoder, ProteinGNN
+from .dual_stream import DualStreamPPI
+from .feature_stream_only import FeatureStreamOnlyPPI
 
 __all__ = [
-    'TransformerConvLayer',
-    'InteractionBlock',
-    'H_GNNMambaPPI'
+    'GNNEncoder',
+    'ProteinGNN',
+    'DualStreamPPI',
+    'FeatureStreamOnlyPPI',
 ]
