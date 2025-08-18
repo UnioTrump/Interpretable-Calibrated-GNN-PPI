@@ -63,6 +63,7 @@ def test(model, val_proteins, data_loader):
 
     return avg_loss, metrics, threshold
 
+
 def main():
     # 初始化数据加载器
     data_loader = DataLoader(device=device)
@@ -97,15 +98,23 @@ def main():
         heads=config.HEADS
     ).to(device)
 
+    model.load_state_dict(torch.load(config.PRE_MODEL, map_location=device))
+
+    # freeze parameters before the last layer
+    for param in model.parameters():
+        param.requires_grad = False
+    for param in model.classifier[-1].parameters():
+        param.requires_grad = True
+
     optimizer = torch.optim.AdamW(model.parameters(), lr=config.LEARNING_RATE, weight_decay=config.WEIGHT_DECAY)
     scheduler = CosineAnnealingLR(optimizer, T_max=config.SCHEDULER_T_MAX, eta_min=config.SCHEDULER_ETA_MIN)
 
     best_pr_auc = 0.0
     patience_counter = 0
     os.makedirs(config.PRE_MODEL, exist_ok=True)
-    best_model_path = os.path.join(config.PRE_MODEL, 'best_model.pth')
-    
-    print("Starting training...")
+    best_model_path = os.path.join(config.TUNING_MODEL, 'best_model.pth')
+
+    print("Starting fine tuning...")
     train_losses, val_losses = [], []
     epoch_pbar = tqdm(range(config.EPOCHS), desc="Training Progress", ncols=180)
 
@@ -115,7 +124,7 @@ def main():
 
         val_loss, metrics, best_threshold = test(model, val_data, data_loader)
         val_losses.append(val_loss)
-        
+
         pr_auc = metrics['pr_auc']
         scheduler.step()
 
