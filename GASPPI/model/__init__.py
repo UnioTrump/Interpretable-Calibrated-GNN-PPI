@@ -1,10 +1,9 @@
 from .base import GNNEncoder, ProteinGNN
-from .dual_stream import DualStreamPPI
-from .feature_stream_only import FeatureStreamOnlyPPI
+from .dual_stream import DualStreamPPI, GatedFusion
 
 __all__ = [
     'GNNEncoder',
-    'ProteinGNN',
+    'ProteinGNN', 
     'DualStreamPPI',
-    'FeatureStreamOnlyPPI',
+    'GatedFusion',
 ]
