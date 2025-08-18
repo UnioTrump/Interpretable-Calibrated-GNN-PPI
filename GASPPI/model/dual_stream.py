@@ -75,18 +75,7 @@ class DualStreamPPI(torch.nn.Module):
             data.a2r_map
         )
 
-        # 确保 r_fourier 保持正确的形状 (num_nodes, num_nodes)
         r_fourier = data.r_fourier
-        if r_fourier.dim() == 1:
-            # 如果被拉平了，重新变形为方形矩阵
-            num_nodes = data.r_pe.shape[0]
-            r_fourier = r_fourier.view(num_nodes, num_nodes)
-        elif r_fourier.dim() == 2 and r_fourier.shape[0] == 1:
-            # 如果是 (1, N*N) 的形状，重新变形
-            total_elements = r_fourier.shape[1]
-            num_nodes = int(total_elements ** 0.5)
-            r_fourier = r_fourier.view(num_nodes, num_nodes)
-        
         geo_adj_t = r_fourier
         geo_embeds = self.geometric_stream(data.r_pe, geo_adj_t)
         

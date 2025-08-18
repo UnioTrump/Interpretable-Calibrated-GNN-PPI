@@ -10,17 +10,7 @@ import config
 
 
 def frequency_filtering(eigenvalues, x_low, x_high):
-    """
-    频域滤波函数，生成注意力优化矩阵
 
-    Args:
-        eigenvalues: 拉普拉斯矩阵的特征值
-        x_low: 低频信号
-        x_high: 高频信号
-
-    Returns:
-        attention_optimization_matrix: 注意力优化矩阵
-    """
     num_nodes = x_low.shape[0]
     # 向量化计算 sum_matrix
     eigenvalues_reshaped_i = eigenvalues.view(-1, 1)
@@ -51,17 +41,7 @@ def frequency_filtering(eigenvalues, x_low, x_high):
 
 
 def compute_fourier_features(x, edge_index, threshold=1.0):
-    """
-    计算图的傅里叶特征
 
-    Args:
-        x: 节点特征 [num_nodes, num_features]
-        edge_index: 边索引 [2, num_edges]
-        threshold: 低频/高频分离阈值
-
-    Returns:
-        dict: 包含傅里叶特征的字典
-    """
     num_nodes = x.shape[0]
     device = x.device
 
@@ -126,35 +106,6 @@ class DataLoader:
         return sum((pickle.load(open(os.path.join(pkl_path, f), 'rb'))
                     for f in os.listdir(pkl_path) if f.endswith('.pkl')), [])
 
-    def _convert_labels_to_indices(self, labels):
-        """
-        Convert string labels to integer indices
-
-        Args:
-            labels: list of string labels or single string label
-
-        Returns:
-            Integer indices for the labels
-        """
-        # Handle single label case
-        if isinstance(labels, str):
-            labels = [labels]
-
-        # Build label mapping if not exists
-        for label in labels:
-            if label not in self.label_to_idx:
-                idx = len(self.label_to_idx)
-                self.label_to_idx[label] = idx
-                self.idx_to_label[idx] = label
-
-        # Convert to indices
-        indices = [self.label_to_idx[label] for label in labels]
-
-        # Return single index if input was single label
-        if len(indices) == 1:
-            return indices[0]
-        return indices
-
     def prepare_sample(self, sample):
         # 创建原子图和残基图用于权重计算
         a_weights = Data(
@@ -189,49 +140,9 @@ class DataLoader:
             sparse_sizes=(len(r_weights.x), len(r_weights.x))
         ).t()
 
-                # 处理残基级标签 - 每个残基一个标签
         labels = sample['label']
-        num_residues = sample['r_node'].shape[0]
-        
-        if isinstance(labels, str):
-            # 标签是字符串格式，每个字符代表一个残基的标签（如 "001011..."）
-            if len(labels) != num_residues:
-                raise ValueError(f"标签字符串长度({len(labels)})与残基数量({num_residues})不匹配")
-            
-            # 将字符串转换为整数列表：'0' -> 0, '1' -> 1
-            try:
-                label_list = [int(char) for char in labels]
-                y_tensor = torch.LongTensor(label_list)
-            except ValueError as e:
-                raise ValueError(f"标签字符串包含非数字字符: {labels[:50]}... 错误: {e}")
-                
-        elif isinstance(labels, (list, np.ndarray)):
-            # 如果标签已经是数组格式
-            labels_array = np.array(labels)
-            
-            if len(labels_array) == 1 and isinstance(labels_array[0], str):
-                # 处理包含单个字符串的数组情况
-                string_label = labels_array[0]
-                if len(string_label) != num_residues:
-                    raise ValueError(f"标签字符串长度({len(string_label)})与残基数量({num_residues})不匹配")
-                label_list = [int(char) for char in string_label]
-                y_tensor = torch.LongTensor(label_list)
-            elif labels_array.size != num_residues:
-                raise ValueError(f"标签数量({labels_array.size})与残基数量({num_residues})不匹配")
-            else:
-                # 转换为tensor
-                if labels_array.dtype.kind in ['U', 'S', 'O']:  # 字符串类型
-                    label_indices = self._convert_labels_to_indices(labels_array.tolist())
-                    y_tensor = torch.LongTensor(label_indices)
-                else:
-                    y_tensor = torch.LongTensor(labels_array.astype(int))
-                    
-        else:
-            raise ValueError(f"不支持的标签类型: {type(labels)}，期望字符串或数组格式")
-        
-        # 最终检查
-        if y_tensor.shape[0] != num_residues:
-            raise ValueError(f"最终标签tensor形状({y_tensor.shape})与残基数量({num_residues})不匹配")
+        label_list = [int(char) for char in labels]
+        y_tensor = torch.LongTensor(label_list)
 
         # 构建最终的数据对象
         data = Data(
@@ -262,6 +173,8 @@ class DataLoader:
             )
 
             # 添加傅里叶特征到数据对象
+            num_nodes = data.r_pe.shape[0]
+            r_fourier = r_fourier.view(num_nodes, num_nodes)
             data.r_fourier = r_fourier
 
         return data.to(self.device)

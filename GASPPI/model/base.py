@@ -1,6 +1,6 @@
 import torch
 import torch.nn.functional as F
-from torch.nn import ModuleList, Linear, LayerNorm, Dropout, ReLU, Sequential
+from torch.nn import ModuleList, Linear, LayerNorm
 from torch_geometric.nn import TransformerConv, JumpingKnowledge, global_mean_pool
 from torch_geometric.utils import dense_to_sparse
 from torch_sparse import SparseTensor
@@ -50,42 +50,22 @@ class GNNEncoder(torch.nn.Module):
                 # Handle SparseTensor
                 row, col, edge_attr = adj_t.coo()
                 edge_index = torch.stack([row, col], dim=0).long()
+                x = conv(x, edge_index, edge_attr)
 
-                # Pass edge_index and edge_attr to conv
-                if self.edge_dim is not None and edge_attr is not None:
-                    x = conv(x, edge_index, edge_attr)
-                else:
-                    x = conv(x, edge_index)
-
-            elif isinstance(adj_t, torch.Tensor) and adj_t.dim() == 2 and adj_t.shape[0] == adj_t.shape[1]:
+            elif isinstance(adj_t, torch.Tensor) and adj_t.dim() == 2 and adj_t.shape[1] == adj_t.shape[0]:
                 # Handle dense adjacency matrix (square matrix)
                 edge_index, edge_attr = dense_to_sparse(adj_t)
                 edge_index = edge_index.long()
+                if edge_attr.dim() == 1:
+                    edge_attr = edge_attr.unsqueeze(-1)
+                x = conv(x, edge_index, edge_attr)
 
-                if self.edge_dim is not None and edge_attr is not None:
-                    # 确保 edge_attr 的维度正确
-                    if edge_attr.dim() == 1:
-                        edge_attr = edge_attr.unsqueeze(-1)  # 从 [E] 转换为 [E, 1]
-                    elif edge_attr.dim() == 2 and edge_attr.shape[1] != self.edge_dim:
-                        # 如果维度不匹配，进行适当的变换
-                        if edge_attr.shape[1] > self.edge_dim:
-                            edge_attr = edge_attr[:, :self.edge_dim]  # 截取前 edge_dim 维
-                        else:
-                            # 如果维度不足，用零填充
-                            padding = torch.zeros(edge_attr.shape[0], self.edge_dim - edge_attr.shape[1], device=edge_attr.device)
-                            edge_attr = torch.cat([edge_attr, padding], dim=1)
-                    
-                    x = conv(x, edge_index, edge_attr)
-                else:
-                    x = conv(x, edge_index)
 
             elif isinstance(adj_t, torch.Tensor) and adj_t.dim() == 2 and adj_t.shape[0] == 2:
-                # Handle edge_index format (2 x num_edges)
                 edge_index = adj_t.long()
                 x = conv(x, edge_index)
 
             elif isinstance(adj_t, torch.Tensor):
-                # Handle other tensor formats - try to convert to long
                 if adj_t.dtype != torch.long:
                     edge_index = adj_t.long()
                 else:
@@ -93,17 +73,7 @@ class GNNEncoder(torch.nn.Module):
                 x = conv(x, edge_index)
 
             else:
-                # Fallback: try to convert whatever we have to proper format
-                try:
-                    if hasattr(adj_t, 'long'):
-                        edge_index = adj_t.long()
-                    else:
-                        edge_index = torch.tensor(adj_t).long()
-                    x = conv(x, edge_index)
-                except Exception as e:
-                    raise ValueError(
-                        f"Cannot convert adj_t to proper format for TransformerConv: {type(adj_t)}, shape: {getattr(adj_t, 'shape', 'unknown')}, error: {e}")
-
+                print("FUCKING data format!!!")
             x = F.relu(x)
             x = norm(x)
             x = F.dropout(x, p=self.dropout, training=self.training)

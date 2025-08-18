@@ -2,7 +2,7 @@ import torch
 
 # General
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-SEED = 41
+SEED = 42
 PROJECT_NAME = "DualStreamPPI_v2"
 
 # Data
@@ -28,7 +28,7 @@ WEIGHT_DECAY = 4e-4
 POS_WEIGHT = 1
 GRAD_NORM = 1.0
 PATIENCE = 8
-MODEL_DIR = './saved_models'
-PLOT_DIR = './plots'
+MODEL_DIR = '/../gz-data/TRAINING_OUTPUT/Saved_model'
+PLOT_DIR = '/../gz-data/TRAINING_OUTPUT/plots'
 SCHEDULER_T_MAX = EPOCHS // 2
 SCHEDULER_ETA_MIN = 1e-6
