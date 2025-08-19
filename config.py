@@ -6,25 +6,29 @@ SEED = 42
 PROJECT_NAME = "DualStreamPPI_v2"
 
 # Data
+'''
+In pretrain data, there are 977 proteins with 244828 residues.
+There are 46353 residue with pos label, and there are 198475 residue with neg label
+'''
 DATA_PATH = r'/../gz-data/features/Final/Pretrain'
-VAL_DATA_PATH = r'/../gz-data/Test/TestUB25.pkl'
+TUNING_DATA_PATH = r'/../gz-data/features/Final/Train'
 PE_DIM = 16
-GAUSSIAN_SIGMA = 1.0
+GAUSSIAN_SIGMA = 0.1
 
 # Model
-ATOM_HIDDEN_DIMS = [64, 128]
-RESIDUE_HIDDEN_DIMS = [256, 256, 128]
-GEO_HIDDEN_DIMS = [64, 128]
+ATOM_HIDDEN_DIMS = [128, 64]
+RESIDUE_HIDDEN_DIMS = [256, 128]
+GEO_HIDDEN_DIMS = [128, 64]
 FUSION_HIDDEN_DIM = 128
 OUT_CHANNELS = 1
 HEADS = 4
-DROPOUT = 0.5
+DROPOUT = 0.7
 
 # Training
 EPOCHS = 100
 BATCH_SIZE = 32
-LEARNING_RATE = 4e-4
-WEIGHT_DECAY = 4e-4
+LEARNING_RATE = 4e-3
+WEIGHT_DECAY = 1e-2
 POS_WEIGHT = 1
 GRAD_NORM = 1.0
 PATIENCE = 8

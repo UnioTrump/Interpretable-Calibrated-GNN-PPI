@@ -69,7 +69,7 @@ def main():
     data_loader = DataLoader(device=device)
 
     # 加载数据
-    all_proteins = data_loader.load_data(config.DATA_PATH)
+    all_proteins = data_loader.load_data(config.TUNING_DATA_PATH)
 
     # 数据分割
     train_data, val_data = data_loader.split_data(all_proteins, train_ratio=0.8, seed=config.SEED)
@@ -98,7 +98,8 @@ def main():
         heads=config.HEADS
     ).to(device)
 
-    model.load_state_dict(torch.load(config.PRE_MODEL, map_location=device))
+    PRE_MODEL = os.path.join(config.PRE_MODEL, 'best_model.pth')
+    model.load_state_dict(torch.load(PRE_MODEL, map_location=device))
 
     # freeze parameters before the last layer
     for param in model.parameters():
