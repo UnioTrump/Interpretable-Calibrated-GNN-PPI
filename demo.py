@@ -64,23 +64,18 @@ def test(model, val_proteins, data_loader):
     return avg_loss, metrics, threshold
 
 def main():
-    # 初始化数据加载器
-    data_loader = DataLoader(device=device)
 
-    # 加载数据
+    data_loader = DataLoader(device=device)
     all_proteins = data_loader.load_data(config.DATA_PATH)
 
-    # 数据分割
     train_data, val_data = data_loader.split_data(all_proteins, train_ratio=0.8, seed=config.SEED)
     print(f'Training samples: {len(train_data)}')
     print(f'Validation samples: {len(val_data)}')
 
-    # 获取数据信息
     data_info = data_loader.get_data_info(all_proteins[0])
     atom_in_channels = data_info['atom_in_channels']
     residue_in_channels = data_info['residue_in_channels']
 
-    # Temporarily switch to the ablation model for diagnostics
     model_class = DualStreamPPI
     print(f"--- DIAGNOSTIC RUN: Using {model_class.__name__} ---")
 

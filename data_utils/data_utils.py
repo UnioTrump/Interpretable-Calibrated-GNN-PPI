@@ -4,7 +4,7 @@ import os
 import numpy as np
 from torch_sparse import SparseTensor
 from torch_geometric.data import Data
-from GASPPI import add_gaussian_edge_weights
+from .utils import add_gaussian_edge_weights
 import torch_geometric.transforms as T
 import config
 
