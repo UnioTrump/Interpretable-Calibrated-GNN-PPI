@@ -79,7 +79,7 @@ Transformer编码器中对应 `[CLS]` 标记（或第一个标记，`output[:, 0
 
 *   脚本使用 `ct/data_mt_4.py` 中的 `get_train_val_test_loader` 创建 `train_loader`、`val_loader` 和 `test_loader`。
 *   创建四个 `Normalizer` 实例（每个目标属性一个）来归一化目标值。这对于稳定训练至关重要，尤其是在目标属性具有不同尺度时。
-    $\text{target\normed}_j = \frac{\text{target}_j - \mu_j}{\sigma_j}$
+    $\text{target_normed}_j = \frac{\text{target}_j - \mu_j}{\sigma_j}$
     其中 $\mu_j$ 和 $\sigma_j$ 分别是第 $j$ 个目标属性的均值和标准差。
 
 ### 3.2. 模型、损失和优化器

@@ -112,7 +112,7 @@ def main():
 
     best_pr_auc = 0.0
     patience_counter = 0
-    os.makedirs(config.PRE_MODEL, exist_ok=True)
+    os.makedirs(config.TUNING_MODEL, exist_ok=True)
     best_model_path = os.path.join(config.TUNING_MODEL, 'best_model.pth')
 
     print("Starting fine tuning...")

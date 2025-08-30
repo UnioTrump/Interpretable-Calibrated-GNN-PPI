@@ -7,9 +7,11 @@ from utils import WeightedCrossEntropy, calculate_metrics, find_best_threshold_b
 from GASPPI import DualStreamPPI
 import config
 from data_utils import DataLoader
+import time
 
 device = config.DEVICE
 torch.manual_seed(config.SEED)
+print(torch.cuda.get_device_name(0))
 
 def train(model, train_proteins, optimizer, data_loader):
     model.train()
@@ -67,7 +69,7 @@ def main():
 
     data_loader = DataLoader(device=device)
     all_proteins = data_loader.load_data(config.DATA_PATH)
-
+    print('FUCKING Load Done!!!!!')
     train_data, val_data = data_loader.split_data(all_proteins, train_ratio=0.8, seed=config.SEED)
     print(f'Training samples: {len(train_data)}')
     print(f'Validation samples: {len(val_data)}')

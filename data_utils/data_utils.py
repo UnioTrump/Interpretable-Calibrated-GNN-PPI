@@ -51,7 +51,7 @@ def compute_fourier_features(x, edge_index, threshold=1.0):
 
     # 图傅里叶变换
     adj = edge_adj + edge_adj.t()  # 确保对称
-    adj = adj.fill_diagonal_(0)  # 去除自环
+    # adj = adj.fill_diagonal_(0)  # 去除自环
 
     # 计算度矩阵
     degree = torch.diag(adj.sum(dim=1))
@@ -71,7 +71,6 @@ def compute_fourier_features(x, edge_index, threshold=1.0):
     # 取实部
     eigenvalues = eigenvalues.real.float()
     eigenvectors = eigenvectors.real.float()
-
     # Graph傅里叶变换
     x_fourier = eigenvectors.t() @ x.float()
 
@@ -90,9 +89,9 @@ def compute_fourier_features(x, edge_index, threshold=1.0):
 
 class DataLoader:
 
-    def __init__(self, device=None, enable_fourier=True, fourier_threshold=1.0, enable_random_walk_pe=True,
-                 walk_length=16):
-        self.device = device or config.DEVICE
+    def __init__(self, device=None, enable_fourier=True, fourier_threshold=config.FOURIER_THRESHOLD, enable_random_walk_pe=True,
+                 walk_length=config.PE_DIM):
+        self.device = config.DEVICE
         self.enable_fourier = enable_fourier
         self.fourier_threshold = fourier_threshold
         self.enable_random_walk_pe = enable_random_walk_pe
