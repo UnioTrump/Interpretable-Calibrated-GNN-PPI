@@ -68,7 +68,7 @@ class DualStreamPPI(torch.nn.Module):
             Linear(self.fusion.out_dim // 2, out_channels)
         )
 
-    def forward(self, data) -> Tensor:
+    def forward(self, data):
         feature_embeds = self.feature_stream(
             data.atom_x, data.atom_adj_t,
             data.residue_x, data.residue_adj_t,
@@ -85,4 +85,25 @@ class DualStreamPPI(torch.nn.Module):
 
         if prediction.shape[-1] == 1:
             return prediction.squeeze(-1)
-        return prediction 
+        return prediction
+
+    def feat(self, data):
+        feature_embeds = self.feature_stream(
+            data.atom_x, data.atom_adj_t,
+            data.residue_x, data.residue_adj_t,
+            data.a2r_map
+        )
+
+        r_fourier = data.r_fourier
+        geo_adj_t = r_fourier
+        geo_embeds = self.geometric_stream(data.r_pe, geo_adj_t)
+
+        fused_embeds = self.fusion(feature_embeds, geo_embeds)
+        return fused_embeds
+
+    def MLP(self, embedding):
+        prediction = self.classifier(embedding)
+
+        if prediction.shape[-1] == 1:
+            return prediction.squeeze(-1)
+        return prediction

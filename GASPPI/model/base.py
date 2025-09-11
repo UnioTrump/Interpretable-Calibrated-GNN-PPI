@@ -22,7 +22,7 @@ class GNNEncoder(torch.nn.Module):
         else:
             self.in_proj = None
 
-        layer_dims = [hidden_dims[0]] + hidden_dims
+        layer_dims = hidden_dims
         for i in range(len(layer_dims) - 1):
             conv = TransformerConv(
                 layer_dims[i],
@@ -60,7 +60,6 @@ class GNNEncoder(torch.nn.Module):
                     edge_attr = edge_attr.unsqueeze(-1)
                 x = conv(x, edge_index, edge_attr)
 
-
             elif isinstance(adj_t, torch.Tensor) and adj_t.dim() == 2 and adj_t.shape[0] == 2:
                 edge_index = adj_t.long()
                 x = conv(x, edge_index)
@@ -79,7 +78,8 @@ class GNNEncoder(torch.nn.Module):
             x = F.dropout(x, p=self.dropout, training=self.training)
             xs.append(x)
 
-        return self.jk(xs[1:])
+        out = self.jk(xs)
+        return out
 
 
 class ProteinGNN(torch.nn.Module):

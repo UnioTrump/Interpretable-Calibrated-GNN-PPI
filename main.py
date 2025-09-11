@@ -1,18 +1,14 @@
-from demo import main as train_main
-from Tuning import main as val_main
+from tqdm import tqdm
+import torch
+import os
+import numpy as np
+from torch.optim.lr_scheduler import CosineAnnealingLR
+from utils import WeightedCrossEntropy, calculate_metrics, find_best_threshold_by_f_beta, plot_loss_curves
+from GASPPI import DualStreamPPI
+import config
+from data_utils import DataLoader
+device=config.DEVICE
+def run_train():
+    data_loader = DataLoader(device=device)
+    all_proteins = data_loader.load_data(config.DATA_PATH)
 
-
-def run():
-    print("Starting training...")
-    train_main()
-    print("Training complete.")
-
-    print("\nStarting validation...")
-    val_main()
-    print("Validation complete.")
-    
-    print("\nfinished successfully.")
-
-
-if __name__ == "__main__":
-    run()
