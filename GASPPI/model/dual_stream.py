@@ -6,6 +6,7 @@ from torch_sparse import SparseTensor
 from torch import Tensor
 from typing import Optional
 from .base import GNNEncoder, ProteinGNN
+from .egnn import EquiformerEncoder
 
 
 class GatedFusion(torch.nn.Module):
@@ -47,12 +48,12 @@ class DualStreamPPI(torch.nn.Module):
             dropout=dropout
         )
 
-        self.geometric_stream = GNNEncoder(
+        self.geometric_stream = EquiformerEncoder(
             in_channels=pe_dim,
-            hidden_dims=geo_hidden_dims,
-            edge_dim=1,
-            heads=heads,
-            dropout=dropout
+            hidden_channels=geo_hidden_dims[0],  # 使用第一个隐藏维度作为主要隐藏层维度
+            out_channels=geo_hidden_dims[-1],    # 使用最后一个维度作为输出维度
+            n_layers=len(geo_hidden_dims)-1,     # 层数
+            edge_dim=1
         )
 
         self.fusion = GatedFusion(
