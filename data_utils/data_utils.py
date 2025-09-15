@@ -46,43 +46,49 @@ def compute_fourier_features(x, edge_index, threshold=1.0):
     device = x.device
 
     # 构建邻接矩阵
-    edge_adj = torch.zeros((num_nodes, num_nodes), dtype=torch.float, device=device)
-    edge_adj[edge_index[0, :], edge_index[1, :]] = 1
+    adj = torch.zeros((num_nodes, num_nodes), dtype=torch.float64, device=device)
+    adj[edge_index[0, :], edge_index[1, :]] = 1
 
     # 图傅里叶变换
-    adj = edge_adj + edge_adj.t()  # 确保对称
-    # adj = adj.fill_diagonal_(0)  # 去除自环
+    adj = adj + adj.t()  # 确保对称
+    adj = adj.fill_diagonal_(0)  # 去除自环
 
     # 计算度矩阵
     degree = torch.diag(adj.sum(dim=1))
     if torch.any(torch.diag(degree) == 0):
-        # 处理孤立节点
+        # print("Waning ! There is a gulijiedian")
         epsilon = 1e-5
         eye_matrix = epsilon * torch.eye(degree.shape[0], device=device)
-        degree_inv_sqrt = torch.inverse(torch.sqrt(degree + eye_matrix))
+        d_sqrt = torch.inverse(torch.sqrt(degree + eye_matrix))
     else:
-        degree_inv_sqrt = torch.inverse(torch.sqrt(degree))
+        d_sqrt = torch.inverse(torch.sqrt(degree))
 
     # 计算归一化的拉普拉斯矩阵
-    laplacian = torch.eye(num_nodes, device=device) - degree_inv_sqrt @ adj @ degree_inv_sqrt
+    laplacian = torch.eye(num_nodes, device=device) - d_sqrt @ adj @ d_sqrt
 
     # 进行特征分解
-    eigenvalues, eigenvectors = torch.linalg.eig(laplacian)
+    eigvals, eigvecs = torch.linalg.eig(laplacian)
     # 取实部
-    eigenvalues = eigenvalues.real.float()
-    eigenvectors = eigenvectors.real.float()
+    eigvals = eigvals.real.float()
+    eigvecs = eigvecs.real.float()
     # Graph傅里叶变换
-    x_fourier = eigenvectors.t() @ x.float()
+    x_fourier = eigvecs.t() @ x.float()
+
+    eigvals, idx = torch.sort(eigvals)
+    eigvecs = eigvecs[:, idx]
+    nodes = eigvecs.shape[0]
+    k=int(0.2 * nodes)
 
     # 分离低频和高频信号
-    low_mask = (eigenvalues < threshold).float().unsqueeze(1)
-    high_mask = (eigenvalues >= threshold).float().unsqueeze(1)
+    low_mask = torch.zeros_like(eigvals)
+    low_mask[:k] = 1
+    high_mask = 1 - low_mask
 
-    x_low = eigenvectors @ (x_fourier * low_mask)
-    x_high = eigenvectors @ (x_fourier * high_mask)
+    x_low = eigvecs @ (x_fourier * low_mask.unsqueeze(1))
+    x_high = eigvecs @ (x_fourier * high_mask.unsqueeze(1))
 
     # 生成注意力优化矩阵
-    attention_optimization_matrix = frequency_filtering(eigenvalues, x_low, x_high)
+    attention_optimization_matrix = frequency_filtering(eigvals, x_low, x_high)
 
     return attention_optimization_matrix
 

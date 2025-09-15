@@ -84,10 +84,7 @@ def main():
         model = model_class(
             atom_in_channels=atom_in_channels,
             residue_in_channels=residue_in_channels,
-            atom_hidden_dims=config.ATOM_HIDDEN_DIMS,
-            residue_hidden_dims=config.RESIDUE_HIDDEN_DIMS,
             pe_dim=config.PE_DIM,
-            geo_hidden_dims=config.GEO_HIDDEN_DIMS,
             fusion_hidden_dim=config.FUSION_HIDDEN_DIM,
             out_channels=config.OUT_CHANNELS,
             dropout=config.DROPOUT,

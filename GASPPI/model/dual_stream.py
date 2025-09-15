@@ -1,12 +1,7 @@
 import torch
-import torch.nn.functional as F
-from torch.nn import ModuleList, Linear, LayerNorm, Dropout, ReLU, Sequential
-from torch_geometric.nn import TransformerConv, JumpingKnowledge, global_mean_pool
-from torch_sparse import SparseTensor
+from torch.nn import Linear, Dropout, ReLU, Sequential
 from torch import Tensor
-from typing import Optional
 from .base import GNNEncoder, ProteinGNN
-from .egnn import EquiformerEncoder
 
 
 class GatedFusion(torch.nn.Module):
@@ -33,27 +28,21 @@ class DualStreamPPI(torch.nn.Module):
     """Dual-stream model for PPI prediction."""
     def __init__(self,
                  atom_in_channels, residue_in_channels,
-                 atom_hidden_dims, residue_hidden_dims,
-                 pe_dim, geo_hidden_dims,
-                 fusion_hidden_dim,
-                 out_channels, heads=4, dropout=0.2):
+                 pe_dim,fusion_hidden_dim, out_channels, heads=4, dropout=0.2):
         super().__init__()
 
         self.feature_stream = ProteinGNN(
             atom_in_channels=atom_in_channels,
             residue_in_channels=residue_in_channels,
-            atom_hidden_dims=atom_hidden_dims,
-            residue_hidden_dims=residue_hidden_dims,
             heads=heads,
             dropout=dropout
         )
 
-        self.geometric_stream = EquiformerEncoder(
+        self.geometric_stream = GNNEncoder(
             in_channels=pe_dim,
-            hidden_channels=geo_hidden_dims[0],  # 使用第一个隐藏维度作为主要隐藏层维度
-            out_channels=geo_hidden_dims[-1],    # 使用最后一个维度作为输出维度
-            n_layers=len(geo_hidden_dims)-1,     # 层数
-            edge_dim=1
+            edge_dim=1,
+            heads=heads,
+            dropout=dropout
         )
 
         self.fusion = GatedFusion(
