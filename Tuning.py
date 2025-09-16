@@ -64,20 +64,19 @@ def test(model, val_proteins, data_loader):
 
 
 def main():
+    data_loader = DataLoader(device=device)
+    all_proteins = data_loader.load_data(config.TUNING_DATA_PATH)
+    train_data, val_data = data_loader.split_data(all_proteins, train_ratio=0.8, seed=42)
+    print(f'Training samples: {len(train_data)}')
+    print(f'Validation samples: {len(val_data)}')
+
+    data_info = data_loader.get_data_info(all_proteins[0])
     for index, seed in enumerate(config.SEED):
         print(f'Experiment {index}')
         torch.cuda.manual_seed_all(seed)
         np.random.seed(seed)
         torch.manual_seed(seed)
-        data_loader = DataLoader(device=device)
 
-        all_proteins = data_loader.load_data(config.TUNING_DATA_PATH)
-
-        train_data, val_data = data_loader.split_data(all_proteins, train_ratio=0.8, seed=42)
-        print(f'Training samples: {len(train_data)}')
-        print(f'Validation samples: {len(val_data)}')
-
-        data_info = data_loader.get_data_info(all_proteins[0])
         atom_in_channels = data_info['atom_in_channels']
         residue_in_channels = data_info['residue_in_channels']
 
@@ -86,10 +85,7 @@ def main():
         model = model_class(
             atom_in_channels=atom_in_channels,
             residue_in_channels=residue_in_channels,
-            atom_hidden_dims=config.ATOM_HIDDEN_DIMS,
-            residue_hidden_dims=config.RESIDUE_HIDDEN_DIMS,
             pe_dim=config.PE_DIM,
-            geo_hidden_dims=config.GEO_HIDDEN_DIMS,
             fusion_hidden_dim=config.FUSION_HIDDEN_DIM,
             out_channels=config.OUT_CHANNELS,
             dropout=config.DROPOUT,
@@ -128,7 +124,7 @@ def main():
             scheduler.step()
 
             if val_losses[-1] < best_loss:
-                best_pr_auc = pr_auc
+                best_loss = val_losses[-1]
                 patience_counter = 0
                 torch.save(model.state_dict(), best_model_path)
             else:

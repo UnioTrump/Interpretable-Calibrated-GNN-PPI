@@ -8,20 +8,20 @@ PROJECT_NAME = "DualStreamPPI_v2"
 # Data
 '''
 In pretrain data, there are 977 proteins with 244828 residues.
-There are 46353 residue with pos label, and there are 198475 residue with neg label 
+There are 46353 residue with pos label, and there are 198475 residue with neg label /../gz-data/Pretrain
 '''
-DATA_PATH = r'/../gz-data/features/Pretrain/PreTrain.pkl'
+DATA_PATH = r'/../gz-data/Pretrain'
 '''
 In the Tuning data, there are 330 proteins with 67069 residues
 There are 10714 residues with pos label and 56025 residues with neg label
 '''
-TUNING_DATA_PATH = r'/../gz-data/features/Final/Tuning/Tuning330.pkl'
+TUNING_DATA_PATH = r'/../gz-data/Tune'
 '''
 In the Test data, there are 60 proteins with 10677 residues
 There are 1929 residues with pos label and 8688 residues with neg label
 '''
-VAL_DATA_PATH = r'/../gz-data/features/Final/Test/Test60.pkl'
-PE_DIM = 4
+VAL_DATA_PATH = r'/../gz-data/Val'
+PE_DIM = 32
 GAUSSIAN_SIGMA = 4
 FOURIER_THRESHOLD = 1.0
 
@@ -30,12 +30,12 @@ NUM_LAYER = 2
 FUSION_HIDDEN_DIM = 128
 OUT_CHANNELS = 1
 HEADS = 3
-DROPOUT = 0.2
+DROPOUT = 0.6
 
 # Training
 EPOCHS = 100
-BATCH_SIZE = 4
-LEARNING_RATE = 4e-4
+BATCH_SIZE = 32
+LEARNING_RATE = 1e-3
 WEIGHT_DECAY = 4e-4
 POS_WEIGHT = 1
 GRAD_NORM = 0.5

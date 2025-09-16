@@ -1,11 +1,7 @@
-import pickle
 import torch
 import os
 import numpy as np
-from torch_sparse import SparseTensor
 from torch_geometric.data import Data
-from .utils import add_gaussian_edge_weights
-import torch_geometric.transforms as T
 import config
 
 
@@ -40,7 +36,7 @@ def frequency_filtering(eigenvalues, x_low, x_high):
     return attention_optimization_matrix
 
 
-def compute_fourier_features(x, edge_index, threshold=1.0):
+def compute_fourier_features(x, edge_index):
 
     num_nodes = x.shape[0]
     device = x.device
@@ -51,7 +47,7 @@ def compute_fourier_features(x, edge_index, threshold=1.0):
 
     # 图傅里叶变换
     adj = adj + adj.t()  # 确保对称
-    adj = adj.fill_diagonal_(0)  # 去除自环
+    adj = adj.fill_diagonal_(0)  # 去除自环！！！！！一定要去除自环
 
     # 计算度矩阵
     degree = torch.diag(adj.sum(dim=1))
@@ -108,79 +104,23 @@ class DataLoader:
 
     @staticmethod
     def load_data(pkl_path):
-        return sum((pickle.load(open(os.path.join(pkl_path, f), 'rb'))
+        return sum((torch.load(open(os.path.join(pkl_path, f), 'rb'))
                     for f in os.listdir(pkl_path) if f.endswith('.pkl')), [])
 
     def prepare_sample(self, sample):
-        # 创建原子图和残基图用于权重计算
-        a_weights = Data(
-            x=torch.FloatTensor(sample['a_node']),
-            edge_index=torch.LongTensor(sample['a_edge_index']),
-        )
-        r_weights = Data(
-            x=torch.FloatTensor(sample['r_node']),
-            edge_index=torch.LongTensor(sample['r_edge_index']),
-        )
 
-        # 添加高斯边权重
-        a_weights = add_gaussian_edge_weights(
-            a_weights, sigma=config.GAUSSIAN_SIGMA
-        )
-        r_weights = add_gaussian_edge_weights(
-            r_weights, sigma=config.GAUSSIAN_SIGMA
-        )
-
-        # 创建稀疏张量
-        atom_adj_t = SparseTensor(
-            row=a_weights.edge_index[0],
-            col=a_weights.edge_index[1],
-            value=a_weights.edge_attr,
-            sparse_sizes=(len(a_weights.x), len(a_weights.x))
-        ).t()
-
-        residue_adj_t = SparseTensor(
-            row=r_weights.edge_index[0],
-            col=r_weights.edge_index[1],
-            value=r_weights.edge_attr,
-            sparse_sizes=(len(r_weights.x), len(r_weights.x))
-        ).t()
-
-        labels = sample['label']
-        label_list = [int(char) for char in labels]
-        y_tensor = torch.LongTensor(label_list)
-
-        # 构建最终的数据对象
         data = Data(
-            atom_x=torch.FloatTensor(sample['a_node']),
-            atom_adj_t=atom_adj_t,
-            residue_x=torch.FloatTensor(sample['r_node']),
-            residue_adj_t=residue_adj_t,
-            r_edge_index=torch.LongTensor(sample['r_edge_index']),
-            a_edge_index=torch.LongTensor(sample['a_edge_index']),
-            y=y_tensor,
-            a2r_map=torch.tensor(sample['a2r_map'])
+            atom_x=sample['a_node'],
+            atom_adj_t=sample['atom_adj_t'],
+            residue_x=sample['r_node'],
+            residue_adj_t=sample['residue_adj_t'],
+            r_edge_index=sample['r_edge_index'],
+            a_edge_index=sample['a_edge_index'],
+            a2r_map=sample['a2r_map'],
+            y=sample['y']
         )
-
-        if self.enable_random_walk_pe:
-            residue_transform = T.AddRandomWalkPE(walk_length=self.walk_length, attr_name='r_pe')
-            r_pe = Data(
-                x=data.residue_x,
-                edge_index=data.r_edge_index
-            )
-            r_pe = residue_transform(r_pe)
-            data.r_pe = r_pe.r_pe
-
-        if self.enable_fourier:
-            r_fourier = compute_fourier_features(
-                data.residue_x,
-                data.r_edge_index,
-                threshold=self.fourier_threshold
-            )
-
-            # 添加傅里叶特征到数据对象
-            num_nodes = data.r_pe.shape[0]
-            r_fourier = r_fourier.view(num_nodes, num_nodes)
-            data.r_fourier = r_fourier
+        data.r_pe = sample['r_pe']
+        data.r_fourier = sample['r_fourier']
 
         return data.to(self.device)
 

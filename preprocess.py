@@ -56,8 +56,8 @@ def process_single_protein(sample, enable_fourier=True, enable_pe=True):
     ).t()
     
     processed_data = {
-        'atom_x': atom_x,
-        'residue_x': residue_x,
+        'a_node': atom_x,
+        'r_node': residue_x,
         'atom_adj_t': atom_adj_t,
         'residue_adj_t': residue_adj_t,
         'a_edge_index': a_edge_index,
@@ -68,18 +68,14 @@ def process_single_protein(sample, enable_fourier=True, enable_pe=True):
     
     if enable_pe:
         # 计算位置编码
-        graph_transformer = LapPE(k=16, attr_name='r_pe')
+        graph_transformer = LapPE(k=config.PE_DIM, attr_name='r_pe')
         r_pe_data = Data(x=residue_x, edge_index=r_edge_index)
         r_pe_data = graph_transformer(r_pe_data)
         processed_data['r_pe'] = r_pe_data.r_pe
     
     if enable_fourier:
         # 计算傅里叶特征
-        r_fourier = compute_fourier_features(
-            residue_x,
-            r_edge_index,
-            threshold=config.FOURIER_THRESHOLD
-        )
+        r_fourier = compute_fourier_features(residue_x, r_edge_index)
         processed_data['r_fourier'] = r_fourier
     
     return processed_data
@@ -131,7 +127,7 @@ if __name__ == "__main__":
     
     # 预处理训练集
     preprocess_dataset(
-        data_path=config.DATA_PATH,
+        data_path='/../gz-data/features/Pretrain/PreTrain.pkl',
         save_dir='/../gz-data/Pretrain/',
         enable_fourier=ENABLE_FOURIER,
         enable_pe=ENABLE_PE
@@ -139,18 +135,17 @@ if __name__ == "__main__":
     
     # 预处理验证集
     preprocess_dataset(
-        data_path=config.VAL_DATA_PATH,
+        data_path='/../gz-data/features/Final/Test/Test60.pkl',
         save_dir='/../gz-data/Val',
         enable_fourier=ENABLE_FOURIER,
         enable_pe=ENABLE_PE
     )
     
     # 预处理测试集（如果有的话）
-    if hasattr(config, 'TEST_DATA_PATH'):
-        preprocess_dataset(
-            data_path=config.TEST_DATA_PATH,
-            save_dir='processed_data/test',
-            enable_fourier=ENABLE_FOURIER,
-            enable_pe=ENABLE_PE
-        )
+    preprocess_dataset(
+        data_path='/../gz-data/features/Final/Tuning/Tuning330.pkl',
+        save_dir='processed_data/Tune',
+        enable_fourier=ENABLE_FOURIER,
+        enable_pe=ENABLE_PE
+    )
 

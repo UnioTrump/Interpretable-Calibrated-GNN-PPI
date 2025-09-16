@@ -1,19 +1,26 @@
 import torch
 import os
+import matplotlib.pyplot as plt
+from sklearn.decomposition import PCA
 from utils import calculate_metrics, find_best_threshold_by_f_beta
 from GASPPI import DualStreamPPI
 import config
 from tqdm import tqdm
 from data_utils import DataLoader
+import numpy as np
 
 device = config.DEVICE
 
 @torch.no_grad()
-def A(models, val_proteins, data_loader):
+def A(models, val_proteins, data_loader, visualize=True):
     all_prob, all_target = [], []
+    raw_features, extracted_features, labels = [], [], []
 
     for val_p in tqdm(val_proteins, desc='Testing'):
         data = data_loader.prepare_sample(val_p)
+
+        raw_feat = data.residue_x.cpu().numpy()
+        raw_features.append(raw_feat)
 
         model_features = []
         for model in models:
@@ -23,6 +30,7 @@ def A(models, val_proteins, data_loader):
 
         features_tensor = torch.stack(model_features, dim=0)
         combined_features = features_tensor.mean(dim=0)
+        extracted_features.append(combined_features.cpu().numpy())
 
         with torch.no_grad():
             pred = models[0].MLP(combined_features)
@@ -30,6 +38,7 @@ def A(models, val_proteins, data_loader):
 
         all_prob.append(probs.detach().cpu())
         all_target.append(data.y.float().squeeze().detach().cpu())
+        labels.append(data.y.cpu().numpy())
 
     all_targets_tensor = torch.cat(all_target, dim=0)
     all_probs_tensor = torch.cat(all_prob, dim=0)
@@ -37,27 +46,49 @@ def A(models, val_proteins, data_loader):
     threshold, _ = find_best_threshold_by_f_beta(all_targets_tensor, all_probs_tensor, num_threshold=100)
     metrics = calculate_metrics(y_true=all_targets_tensor, y_scores=all_probs_tensor, threshold=threshold)
 
+    # --------- PCA可视化部分 ---------
+    if visualize:
+        raw_features = torch.tensor(np.concatenate(raw_features, axis=0))
+        extracted_features = torch.tensor(np.concatenate(extracted_features, axis=0))
+        labels = np.concatenate(labels, axis=0)
+
+        # PCA降维到2D
+        pca = PCA(n_components=2)
+        raw_pca = pca.fit_transform(raw_features)
+        extracted_pca = pca.fit_transform(extracted_features)
+
+        fig, axs = plt.subplots(1, 2, figsize=(12, 5))
+        scatter1 = axs[0].scatter(raw_pca[:,0], raw_pca[:,1], c=labels, cmap='coolwarm', alpha=0.6)
+        axs[0].set_title("Raw Features PCA")
+        fig.colorbar(scatter1, ax=axs[0])
+
+        scatter2 = axs[1].scatter(extracted_pca[:,0], extracted_pca[:,1], c=labels, cmap='coolwarm', alpha=0.6)
+        axs[1].set_title("Extracted Features PCA")
+        fig.colorbar(scatter2, ax=axs[1])
+
+        plt.tight_layout()
+        plt.savefig("pca_vis.png", dpi=300)
+        plt.close()
+
     return metrics
+
 def main():
+    models = []
+    data_loader = DataLoader(device=device)
+    all_proteins = data_loader.load_data(config.VAL_DATA_PATH)
     for index, seed in enumerate(config.SEED):
         torch.cuda.manual_seed_all(seed)
         torch.manual_seed(seed)
-        data_loader = DataLoader(device=device)
-        all_proteins = data_loader.load_data(config.VAL_DATA_PATH)
 
         data_info = data_loader.get_data_info(all_proteins[0])
         atom_in_channels = data_info['atom_in_channels']
         residue_in_channels = data_info['residue_in_channels']
 
         model_class = DualStreamPPI
-        models=[]
         model = model_class(
             atom_in_channels=atom_in_channels,
             residue_in_channels=residue_in_channels,
-            atom_hidden_dims=config.ATOM_HIDDEN_DIMS,
-            residue_hidden_dims=config.RESIDUE_HIDDEN_DIMS,
             pe_dim=config.PE_DIM,
-            geo_hidden_dims=config.GEO_HIDDEN_DIMS,
             fusion_hidden_dim=config.FUSION_HIDDEN_DIM,
             out_channels=config.OUT_CHANNELS,
             dropout=config.DROPOUT,
@@ -69,7 +100,7 @@ def main():
         model.eval()
         models.append(model)
 
-    metrics = A(models, all_proteins, data_loader)
+    metrics = A(models, all_proteins, data_loader, visualize=True)
     print('-' * 20)
     for key, val in metrics.items():
         if isinstance(val, (int, float)):

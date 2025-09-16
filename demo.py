@@ -92,7 +92,7 @@ def main():
         ).to(device)
 
         optimizer = torch.optim.AdamW(model.parameters(), lr=config.LEARNING_RATE, weight_decay=config.WEIGHT_DECAY)
-        scheduler = CosineAnnealingLR(optimizer, T_max=config.SCHEDULER_T_MAX, eta_min=config.SCHEDULER_ETA_MIN)
+        # scheduler = CosineAnnealingLR(optimizer, T_max=config.SCHEDULER_T_MAX, eta_min=config.SCHEDULER_ETA_MIN)
         os.makedirs(config.PRE_MODEL, exist_ok=True)
 
         print("Starting training...")
@@ -111,7 +111,7 @@ def main():
             val_losses.append(val_loss)
 
             pr_auc = metrics['pr_auc']
-            scheduler.step()
+            # scheduler.step()
 
             if val_losses[-1] < best_loss:
                 best_loss = val_losses[-1]

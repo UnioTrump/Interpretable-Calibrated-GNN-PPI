@@ -1,7 +1,7 @@
 import torch
 import torch.nn.functional as F
 from torch.nn import ModuleList, LayerNorm, Linear
-from torch_geometric.nn import TransformerConv, JumpingKnowledge, global_mean_pool, AntiSymmetricConv
+from torch_geometric.nn import TransformerConv, JumpingKnowledge, global_mean_pool, AntiSymmetricConv, ARMAConv
 from torch_geometric.utils import dense_to_sparse
 from torch_sparse import SparseTensor
 from torch import Tensor
@@ -33,7 +33,13 @@ class GNNEncoder(torch.nn.Module):
             edge_dim=self.edge_dim,
             beta=True
         )'''
-        conv1 = AntiSymmetricConv(self.hid_dim)
+        phi = ARMAConv(
+            self.hid_dim,
+            self.hid_dim,
+            act=F.tanh,
+            dropout=config.DROPOUT)
+        conv1 = AntiSymmetricConv(self.hid_dim, phi=phi)
+        self.convs.append(conv1)
         for _ in range(config.NUM_LAYER):
             self.convs.append(conv1)
             self.norms.append(LayerNorm(self.hid_dim))
@@ -102,10 +108,10 @@ class ProteinGNN(torch.nn.Module):
         atom_out_dim = self.atom_encoder.out_dim
 
         self.atom_proj = torch.nn.Linear(atom_out_dim, 512)
-        residue_gnn_in_channels = residue_in_channels + 512
+        r_fus = residue_in_channels + 512
 
         self.residue_encoder = GNNEncoder(
-            in_channels=residue_gnn_in_channels,
+            in_channels=r_fus,
             edge_dim=1,
             hid_dim=512,
             heads=heads,

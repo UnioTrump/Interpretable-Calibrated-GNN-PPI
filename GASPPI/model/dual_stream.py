@@ -41,6 +41,7 @@ class DualStreamPPI(torch.nn.Module):
         self.geometric_stream = GNNEncoder(
             in_channels=pe_dim,
             edge_dim=1,
+            hid_dim=64,
             heads=heads,
             dropout=dropout
         )
@@ -65,9 +66,7 @@ class DualStreamPPI(torch.nn.Module):
             data.a2r_map
         )
 
-        r_fourier = data.r_fourier
-        geo_adj_t = r_fourier
-        geo_embeds = self.geometric_stream(data.r_pe, geo_adj_t)
+        geo_embeds = self.geometric_stream(data.r_pe, data.r_fourier)
         
         fused_embeds = self.fusion(feature_embeds, geo_embeds)
         
