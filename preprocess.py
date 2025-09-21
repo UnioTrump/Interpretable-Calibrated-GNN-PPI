@@ -102,18 +102,18 @@ if __name__ == "__main__":
         save_dir='/../gz-data/Train',
         enable_fourier=ENABLE_FOURIER,
         enable_pe=ENABLE_PE,
-        name='ProtBERT_Train7596'
+        name='ProtBERT_Trainset7596'
     )
-    '''
+
     # 预处理验证集
     preprocess_dataset(
-        data_path='/../gz-data/Pretrain/esmc_Trainset7596.pkl',
+        data_path='/../gz-data/Pretrain/ProtT5_Train7596.pkl',
         save_dir='/../gz-data/Train',
         enable_fourier=ENABLE_FOURIER,
         enable_pe=ENABLE_PE,
-        name='esmc_Trainset7596'
+        name='ProtT5_Train7596'
     )
-
+    '''
     # 预处理测试集（如果有的话）
     preprocess_dataset(
         data_path='/../gz-data/features/Final/Tuning/Tuning330.pkl',

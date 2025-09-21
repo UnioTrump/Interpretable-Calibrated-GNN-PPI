@@ -91,13 +91,9 @@ def compute_fourier_features(x, edge_index):
 
 class DataLoader:
 
-    def __init__(self, device=None, enable_fourier=True, fourier_threshold=config.FOURIER_THRESHOLD, enable_random_walk_pe=True,
-                 walk_length=config.PE_DIM):
-        self.device = config.DEVICE
-        self.enable_fourier = enable_fourier
-        self.fourier_threshold = fourier_threshold
-        self.enable_random_walk_pe = enable_random_walk_pe
-        self.walk_length = walk_length
+    def __init__(self, device = None):
+        if device is None:
+            self.device = config.DEVICE
 
     @staticmethod
     def load_data(pkl_path):
