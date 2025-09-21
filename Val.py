@@ -3,7 +3,7 @@ import os
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 from utils import calculate_metrics, find_best_threshold_by_f_beta
-from GASPPI import DualStreamPPI
+from GASPPI import DualStream
 import config
 from tqdm import tqdm
 from data_utils import DataLoader
@@ -84,7 +84,7 @@ def main():
         atom_in_channels = data_info['atom_in_channels']
         residue_in_channels = data_info['residue_in_channels']
 
-        model_class = DualStreamPPI
+        model_class = DualStream
         model = model_class(
             atom_in_channels=atom_in_channels,
             residue_in_channels=residue_in_channels,

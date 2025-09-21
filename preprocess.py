@@ -11,76 +11,47 @@ import config
 
 
 def process_single_protein(sample, enable_fourier=True, enable_pe=True):
-    """处理单个蛋白质样本
-    
-    Args:
-        sample: 原始样本数据
-        enable_fourier: 是否计算傅里叶特征
-        enable_pe: 是否计算位置编码
-    """
-    # 转换为tensor
-    atom_x = torch.FloatTensor(sample['a_node'])
-    residue_x = torch.FloatTensor(sample['r_node'])
-    a_edge_index = torch.LongTensor(sample['a_edge_index'])
-    r_edge_index = torch.LongTensor(sample['r_edge_index'])
-    a2r_map = torch.tensor(sample['a2r_map'])
-    
+
+    x = torch.FloatTensor(sample['x'])
+    edge_index = torch.LongTensor(sample['edge_index'])
     # 处理标签
     labels = sample['label']
     label_list = [int(char) for char in labels]
     y = torch.LongTensor(label_list)
-    
-    # 计算高斯边权重
-    a_weights = add_gaussian_edge_weights(
-        Data(x=atom_x, edge_index=a_edge_index),
-        sigma=config.GAUSSIAN_SIGMA
-    )
+
     r_weights = add_gaussian_edge_weights(
-        Data(x=residue_x, edge_index=r_edge_index),
+        Data(x=x, edge_index=edge_index),
         sigma=config.GAUSSIAN_SIGMA
     )
-    
+
     # 构建稀疏张量
-    atom_adj_t = SparseTensor(
-        row=a_weights.edge_index[0],
-        col=a_weights.edge_index[1],
-        value=a_weights.edge_attr,
-        sparse_sizes=(len(a_weights.x), len(a_weights.x))
-    ).t()
-    
     residue_adj_t = SparseTensor(
         row=r_weights.edge_index[0],
         col=r_weights.edge_index[1],
         value=r_weights.edge_attr,
         sparse_sizes=(len(r_weights.x), len(r_weights.x))
     ).t()
-    
     processed_data = {
-        'a_node': atom_x,
-        'r_node': residue_x,
-        'atom_adj_t': atom_adj_t,
+        'r_node': x,
         'residue_adj_t': residue_adj_t,
-        'a_edge_index': a_edge_index,
-        'r_edge_index': r_edge_index,
-        'a2r_map': a2r_map,
         'y': y
     }
-    
+
     if enable_pe:
         # 计算位置编码
-        graph_transformer = LapPE(k=config.PE_DIM, attr_name='r_pe')
-        r_pe_data = Data(x=residue_x, edge_index=r_edge_index)
+        graph_transformer = LapPE(k=config.PE_DIM, attr_name='r_pe', is_undirected=True)
+        r_pe_data = Data(x=x, edge_index=edge_index)
         r_pe_data = graph_transformer(r_pe_data)
         processed_data['r_pe'] = r_pe_data.r_pe
     
     if enable_fourier:
         # 计算傅里叶特征
-        r_fourier = compute_fourier_features(residue_x, r_edge_index)
+        r_fourier = compute_fourier_features(x, edge_index)
         processed_data['r_fourier'] = r_fourier
     
     return processed_data
 
-def preprocess_dataset(data_path, save_dir, enable_fourier=True, enable_pe=True):
+def preprocess_dataset(data_path, save_dir, enable_fourier=True, enable_pe=True, name:str = None):
     """预处理整个数据集
     
     Args:
@@ -95,7 +66,7 @@ def preprocess_dataset(data_path, save_dir, enable_fourier=True, enable_pe=True)
     os.makedirs(save_dir, exist_ok=True)
     
     # 加载原始数据
-    with open(data_path, 'rb') as f:
+    with open(data_path,'rb') as f:
         data = pickle.load(f)
     
     # 处理每个样本
@@ -115,7 +86,7 @@ def preprocess_dataset(data_path, save_dir, enable_fourier=True, enable_pe=True)
     
     # 保存剩余样本
     if processed_data:
-        save_path = os.path.join(save_dir, f'batch_final.pkl')
+        save_path = os.path.join(save_dir, f'{name}.pkl')
         torch.save(processed_data, save_path)
     
     print(f"预处理完成，结果保存在: {save_dir}")
@@ -124,23 +95,25 @@ if __name__ == "__main__":
     # 设置预处理参数
     ENABLE_FOURIER = True
     ENABLE_PE = True
-    
+
     # 预处理训练集
     preprocess_dataset(
-        data_path='/../gz-data/features/Pretrain/PreTrain.pkl',
-        save_dir='/../gz-data/Pretrain/',
+        data_path='/../gz-data/Pretrain/ProtBERT_Train7596.pkl',
+        save_dir='/../gz-data/Train',
         enable_fourier=ENABLE_FOURIER,
-        enable_pe=ENABLE_PE
+        enable_pe=ENABLE_PE,
+        name='ProtBERT_Train7596'
     )
-    
+    '''
     # 预处理验证集
     preprocess_dataset(
-        data_path='/../gz-data/features/Final/Test/Test60.pkl',
-        save_dir='/../gz-data/Val',
+        data_path='/../gz-data/Pretrain/esmc_Trainset7596.pkl',
+        save_dir='/../gz-data/Train',
         enable_fourier=ENABLE_FOURIER,
-        enable_pe=ENABLE_PE
+        enable_pe=ENABLE_PE,
+        name='esmc_Trainset7596'
     )
-    
+
     # 预处理测试集（如果有的话）
     preprocess_dataset(
         data_path='/../gz-data/features/Final/Tuning/Tuning330.pkl',
@@ -148,4 +121,4 @@ if __name__ == "__main__":
         enable_fourier=ENABLE_FOURIER,
         enable_pe=ENABLE_PE
     )
-
+    '''

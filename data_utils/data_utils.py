@@ -98,9 +98,6 @@ class DataLoader:
         self.fourier_threshold = fourier_threshold
         self.enable_random_walk_pe = enable_random_walk_pe
         self.walk_length = walk_length
-        # Initialize label mapping for string to integer conversion
-        self.label_to_idx = {}
-        self.idx_to_label = {}
 
     @staticmethod
     def load_data(pkl_path):
@@ -110,17 +107,13 @@ class DataLoader:
     def prepare_sample(self, sample):
 
         data = Data(
-            atom_x=sample['a_node'],
-            atom_adj_t=sample['atom_adj_t'],
-            residue_x=sample['r_node'],
-            residue_adj_t=sample['residue_adj_t'],
+            seq_x=sample['r_node'],
+            seq_adj_t=sample['residue_adj_t'],
             r_edge_index=sample['r_edge_index'],
-            a_edge_index=sample['a_edge_index'],
-            a2r_map=sample['a2r_map'],
-            y=sample['y']
+            y=sample['y'],
+            r_pe=sample['r_pe'],
+            r_fourier=sample['r_fourier']
         )
-        data.r_pe = sample['r_pe']
-        data.r_fourier = sample['r_fourier']
 
         return data.to(self.device)
 
@@ -142,12 +135,8 @@ class DataLoader:
     @staticmethod
     def get_data_info(sample_data):
         return {
-            'atom_in_channels': sample_data['a_node'].shape[1],
-            'residue_in_channels': sample_data['r_node'].shape[1],
-            'atom_nodes': sample_data['a_node'].shape[0],
-            'residue_nodes': sample_data['r_node'].shape[0],
-            'atom_edges': sample_data['a_edge_index'].shape[1],
-            'residue_edges': sample_data['r_edge_index'].shape[1]
+            'sequence_in_channels': sample_data['r_node'].shape[1],
+            'sequence_nodes': sample_data['r_node'].shape[0],
         }
 
 

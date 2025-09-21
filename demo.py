@@ -4,7 +4,7 @@ import os
 import numpy as np
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from utils import WeightedCrossEntropy, calculate_metrics, find_best_threshold_by_f_beta, plot_loss_curves
-from GASPPI import DualStreamPPI
+from GASPPI import MultiView
 import config
 from data_utils import DataLoader
 
@@ -77,22 +77,22 @@ def main():
         print(f'Validation samples: {len(val_data)}')
 
         data_info = data_loader.get_data_info(all_proteins[0])
-        atom_in_channels = data_info['atom_in_channels']
-        residue_in_channels = data_info['residue_in_channels']
+        sequence_in_channels = data_info['sequence_in_channels']
 
-        model_class = DualStreamPPI
+        model_class = MultiView
         model = model_class(
-            atom_in_channels=atom_in_channels,
-            residue_in_channels=residue_in_channels,
+            in_channels=sequence_in_channels,
             pe_dim=config.PE_DIM,
-            fusion_hidden_dim=config.FUSION_HIDDEN_DIM,
+            fuse_dim=config.FUSION_HIDDEN_DIM,
             out_channels=config.OUT_CHANNELS,
+            n_graphs=1,
+            fusion='concat',
             dropout=config.DROPOUT,
             heads=config.HEADS
         ).to(device)
 
         optimizer = torch.optim.AdamW(model.parameters(), lr=config.LEARNING_RATE, weight_decay=config.WEIGHT_DECAY)
-        # scheduler = CosineAnnealingLR(optimizer, T_max=config.SCHEDULER_T_MAX, eta_min=config.SCHEDULER_ETA_MIN)
+        scheduler = CosineAnnealingLR(optimizer, T_max=config.SCHEDULER_T_MAX, eta_min=config.SCHEDULER_ETA_MIN)
         os.makedirs(config.PRE_MODEL, exist_ok=True)
 
         print("Starting training...")
@@ -111,7 +111,7 @@ def main():
             val_losses.append(val_loss)
 
             pr_auc = metrics['pr_auc']
-            # scheduler.step()
+            scheduler.step()
 
             if val_losses[-1] < best_loss:
                 best_loss = val_losses[-1]

@@ -1,11 +1,13 @@
 import torch
 import torch.nn.functional as F
 from torch.nn import ModuleList, LayerNorm, Linear
-from torch_geometric.nn import TransformerConv, JumpingKnowledge, global_mean_pool, AntiSymmetricConv, ARMAConv
 from torch_geometric.utils import dense_to_sparse
-from torch_sparse import SparseTensor
+from torch_geometric.nn import JumpingKnowledge, AntiSymmetricConv, GeneralConv
 from torch import Tensor
 from typing import Optional
+
+from torch_sparse import SparseTensor
+
 import config
 
 class GNNEncoder(torch.nn.Module):
@@ -23,21 +25,8 @@ class GNNEncoder(torch.nn.Module):
             
         self.convs = ModuleList()
         self.norms = ModuleList()
-        '''
-        phi = TransformerConv(
-            self.hid_dim,
-            self.hid_dim,
-            heads=heads,
-            concat=False,
-            dropout=dropout,
-            edge_dim=self.edge_dim,
-            beta=True
-        )'''
-        phi = ARMAConv(
-            self.hid_dim,
-            self.hid_dim,
-            act=F.tanh,
-            dropout=config.DROPOUT)
+        phi = GeneralConv(in_channels=self.hid_dim, out_channels=self.hid_dim,in_edge_channels=1,
+                        heads=heads, aggr='mean', directed_msg=False, l2_normalize=True)
         conv1 = AntiSymmetricConv(self.hid_dim, phi=phi)
         self.convs.append(conv1)
         for _ in range(config.NUM_LAYER):
@@ -45,12 +34,12 @@ class GNNEncoder(torch.nn.Module):
             self.norms.append(LayerNorm(self.hid_dim))
 
         self.jk = JumpingKnowledge(mode='cat')
-        self.out_dim = hid_dim * (config.NUM_LAYER + 1)
+        self.out_dim : int = hid_dim * (config.NUM_LAYER + 1)
 
     def forward(self, x: Tensor, adj_t: SparseTensor) -> Tensor:
         if self.in_proj is not None:
             x = self.in_proj(x)
-            
+
         xs = [x]
         for conv, norm in zip(self.convs, self.norms):
             # Convert adjacency format to edge_index format for TransformerConv
@@ -88,47 +77,3 @@ class GNNEncoder(torch.nn.Module):
 
         out = self.jk(xs)
         return out
-
-
-class ProteinGNN(torch.nn.Module):
-    def __init__(self,
-                 atom_in_channels,
-                 residue_in_channels,
-                 heads=4, dropout=0.2):
-        super().__init__()
-
-
-        self.atom_encoder = GNNEncoder(
-            in_channels=atom_in_channels,
-            edge_dim=1,
-            hid_dim=256,
-            heads=heads,
-            dropout=dropout
-        )
-        atom_out_dim = self.atom_encoder.out_dim
-
-        self.atom_proj = torch.nn.Linear(atom_out_dim, 512)
-        r_fus = residue_in_channels + 512
-
-        self.residue_encoder = GNNEncoder(
-            in_channels=r_fus,
-            edge_dim=1,
-            hid_dim=512,
-            heads=heads,
-            dropout=dropout
-        )
-
-        self.out_dim = self.residue_encoder.out_dim
-
-    def forward(self,
-                atom_x, atom_adj_t,
-                residue_x, residue_adj_t,
-                atom_to_residue_map):
-        atom_out = self.atom_encoder(atom_x, atom_adj_t)
-        pooled_atom_feats = global_mean_pool(atom_out, atom_to_residue_map)
-
-        projected_atom_feats = self.atom_proj(pooled_atom_feats)
-        residue_x_combined = torch.cat([residue_x, projected_atom_feats], dim=-1)
-        residue_out = self.residue_encoder(residue_x_combined, residue_adj_t)
-
-        return residue_out

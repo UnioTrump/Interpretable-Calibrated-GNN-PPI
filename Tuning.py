@@ -4,7 +4,7 @@ import os
 import numpy as np
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from utils import WeightedCrossEntropy, calculate_metrics, find_best_threshold_by_f_beta, plot_loss_curves
-from GASPPI import DualStreamPPI
+from GASPPI import DualStream
 import config
 from data_utils import DataLoader
 
@@ -80,7 +80,7 @@ def main():
         atom_in_channels = data_info['atom_in_channels']
         residue_in_channels = data_info['residue_in_channels']
 
-        model_class = DualStreamPPI
+        model_class = DualStream
 
         model = model_class(
             atom_in_channels=atom_in_channels,
