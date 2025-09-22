@@ -74,10 +74,7 @@ def main():
             multimodal_data_dir=config.MULTIMODAL_DATA_DIR
         )
         all_proteins = DataLoader.load_data(data_loader)
-        print('FUCKING Load Done!!!!!')
         train_data, val_data = DataLoader.split_data(all_proteins, train_ratio=0.8, seed=42)
-        print(f'Training samples: {len(train_data)}')
-        print(f'Validation samples: {len(val_data)}')
 
         # Prepare a sample to get data info for model initialization
         if all_proteins:
@@ -85,13 +82,13 @@ def main():
         else:
             raise ValueError("No data loaded. Please check data paths.")
 
-        dat_info = DataLoader.get_dat_info(sample_data_for_info)
+        dat_info = DataLoader.data_ifo(sample_data_for_info)
         sequence_in_channels = dat_info['sequence_in_channels']
         modal2_in_channels = dat_info.get('modal2_in_channels', None)
         modal3_in_channels = dat_info.get('modal3_in_channels', None)
         modal2_pe_dim = dat_info.get('modal2_pe_dim', None)
         modal3_pe_dim = dat_info.get('modal3_pe_dim', None)
-        print(f'modal2_in_channels: {modal2_in_channels}\n modal3_in_channels: {modal3_in_channels}\n modal2_pe_dim: {modal2_pe_dim}\n modal3_pe_dim: {modal3_pe_dim}')
+        # print(f'modal2_in_channels: {modal2_in_channels}\n modal3_in_channels: {modal3_in_channels}\n modal2_pe_dim: {modal2_pe_dim}\n modal3_pe_dim: {modal3_pe_dim}')
 
         model_class = DualStreamPPI
         model = model_class(

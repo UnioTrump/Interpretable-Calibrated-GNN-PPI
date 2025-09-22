@@ -76,7 +76,7 @@ class DualStreamPPI(torch.nn.Module):
         if modal2_in_channels is not None and modal2_pe_dim is not None:
             self.modal2_semantic_stream = GNNEncoder(
                 in_channels=modal2_in_channels,
-                hid_dim=config.MULTI_GNN_HID_DIM,
+                hid_dim=config.FEAT_GNN_HID_DIM,
                 edge_dim=config.EDGE_DIM,
                 heads=config.HEADS,
                 dropout=config.DROPOUT
@@ -101,7 +101,7 @@ class DualStreamPPI(torch.nn.Module):
         if modal3_in_channels is not None and modal3_pe_dim is not None:
             self.modal3_semantic_stream = GNNEncoder(
                 in_channels=modal3_in_channels,
-                hid_dim=config.MULTI_GNN_HID_DIM,
+                hid_dim=config.FEAT_GNN_HID_DIM,
                 edge_dim=config.EDGE_DIM,
                 heads=config.HEADS,
                 dropout=config.DROPOUT

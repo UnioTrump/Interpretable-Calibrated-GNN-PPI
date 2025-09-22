@@ -8,10 +8,10 @@ from data_utils.data_utils import compute_fourier_features
 from data_utils.utils import add_gaussian_edge_weights
 from torch_geometric.transforms import AddLaplacianEigenvectorPE as LapPE
 import config
+import argparse
 
 
 def process_single_protein(sample, enable_fourier=True, enable_pe=True):
-
     x = torch.FloatTensor(sample['x'])
     edge_index = torch.LongTensor(sample['edge_index'])
     # 处理标签
@@ -43,17 +43,18 @@ def process_single_protein(sample, enable_fourier=True, enable_pe=True):
         r_pe_data = Data(x=x, edge_index=edge_index)
         r_pe_data = graph_transformer(r_pe_data)
         processed_data['r_pe'] = r_pe_data.r_pe
-    
+
     if enable_fourier:
         # 计算傅里叶特征
         r_fourier = compute_fourier_features(x, edge_index)
         processed_data['r_fourier'] = r_fourier
-    
+
     return processed_data
 
-def preprocess_dataset(data_path, save_dir, enable_fourier=True, enable_pe=True, name:str = None):
+
+def preprocess_dataset(data_path, save_dir, enable_fourier=True, enable_pe=True, name: str = None):
     """预处理整个数据集
-    
+
     Args:
         data_path: 原始数据路径
         save_dir: 预处理结果保存路径
@@ -61,50 +62,55 @@ def preprocess_dataset(data_path, save_dir, enable_fourier=True, enable_pe=True,
         enable_pe: 是否计算位置编码
     """
     print(f"开始处理数据集: {data_path}")
-    
+
     # 创建保存目录
     os.makedirs(save_dir, exist_ok=True)
-    
+
     # 加载原始数据
-    with open(data_path,'rb') as f:
+    with open(data_path, 'rb') as f:
         data = pickle.load(f)
-    
+
     # 处理每个样本
     processed_data = []
     for idx, sample in enumerate(tqdm(data, desc="预处理蛋白质")):
         try:
             processed_sample = process_single_protein(
-                sample, 
+                sample,
                 enable_fourier=enable_fourier,
                 enable_pe=enable_pe
             )
             processed_data.append(processed_sample)
-                
+
         except Exception as e:
             print(f"处理样本 {idx} 时出错: {str(e)}")
             continue
-    
+
     # 保存剩余样本
     if processed_data:
         save_path = os.path.join(save_dir, f'{name}.pkl')
         torch.save(processed_data, save_path)
-    
+
     print(f"预处理完成，结果保存在: {save_dir}")
+
 
 if __name__ == "__main__":
     # 设置预处理参数
     ENABLE_FOURIER = True
     ENABLE_PE = True
+    parser = argparse.ArgumentParser(description='预处理数据集')
+    parser.add_argument('--data_path', required=True, help='数据文件路径')
+    parser.add_argument('--name', required=True, help='数据集名称')
 
+    args = parser.parse_args()
     # 预处理训练集
     preprocess_dataset(
-        data_path='/../gz-data/Pretrain/ProtBERT_Train7596.pkl',
-        save_dir='/../gz-data/Train',
+        data_path=args.data_path,
+        save_dir='/../gz-data/Test',
         enable_fourier=ENABLE_FOURIER,
         enable_pe=ENABLE_PE,
-        name='ProtBERT_Trainset7596'
+        name=args.name
     )
-
+    '''
     # 预处理验证集
     preprocess_dataset(
         data_path='/../gz-data/Pretrain/ProtT5_Train7596.pkl',
@@ -113,7 +119,7 @@ if __name__ == "__main__":
         enable_pe=ENABLE_PE,
         name='ProtT5_Train7596'
     )
-    '''
+
     # 预处理测试集（如果有的话）
     preprocess_dataset(
         data_path='/../gz-data/features/Final/Tuning/Tuning330.pkl',

@@ -187,7 +187,7 @@ class DataLoader:
         return train_data, val_data
 
     @staticmethod
-    def get_dat_info(sample_data): # sample_data will now be a Data object from prepare_sample
+    def data_ifo(sample_data): # sample_data will now be a Data object from prepare_sample
         info = {
             'sequence_in_channels': sample_data.seq_x.shape[1],
             'sequence_nodes': sample_data.seq_x.shape[0],

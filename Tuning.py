@@ -66,7 +66,7 @@ def test(model, val_proteins, data_loader):
 def main():
     data_loader = DataLoader(
         device=device,
-        multimodal_data_dir=config.MULTIMODAL_DATA_DIR
+        multimodal_data_dir=config.TUNING_DATA_PATH
     )
     all_proteins = DataLoader.load_data(data_loader)
     train_data, val_data = DataLoader.split_data(all_proteins, train_ratio=0.8, seed=42)
@@ -78,7 +78,7 @@ def main():
     else:
         raise ValueError("No data loaded for tuning. Please check data paths.")
     
-    dat_info = DataLoader.get_data_info(sample_data_for_info)
+    dat_info = DataLoader.data_ifo(sample_data_for_info)
     sequence_in_channels = dat_info['sequence_in_channels']
     modal2_in_channels = dat_info.get('modal2_in_channels', None)
     modal3_in_channels = dat_info.get('modal3_in_channels', None)
