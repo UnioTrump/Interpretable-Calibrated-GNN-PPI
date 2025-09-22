@@ -4,9 +4,9 @@ import os
 import numpy as np
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from utils import WeightedCrossEntropy, calculate_metrics, find_best_threshold_by_f_beta, plot_loss_curves
-from GASPPI import DualStream
+from GASPPI import DualStreamPPI
 import config
-from data_utils import LoadGraph
+from data_utils import DataLoader
 
 device = config.DEVICE
 
@@ -22,8 +22,8 @@ def train(model, train_proteins, optimizer, data_loader):
         optimizer.zero_grad()
 
         batch_loss_sum = 0
-        for protein in batch_proteins:
-            data = data_loader.prepare_sample(protein)
+        for protein_idx in batch_proteins:
+            data = data_loader.prepare_sample(protein_idx)
             out = model(data)
             loss = criterion.compute_loss(out, data.y)
             batch_loss_sum += loss.item()
@@ -45,8 +45,8 @@ def test(model, val_proteins, data_loader):
     total_loss = 0
     all_probs, all_targets = [], []
 
-    for val_p in val_proteins:
-        data = data_loader.prepare_sample(val_p)
+    for val_p_idx in val_proteins:
+        data = data_loader.prepare_sample(val_p_idx)
         out = model(data)
         loss = criterion.compute_loss(out, data.y)
         total_loss += loss.item()
@@ -64,32 +64,44 @@ def test(model, val_proteins, data_loader):
 
 
 def main():
-    data_loader = LoadGraph(device=device)
-    all_proteins = data_loader.load_data(config.TUNING_DATA_PATH)
-    train_data, val_data = data_loader.split_data(all_proteins, train_ratio=0.8, seed=42)
+    data_loader = DataLoader(
+        device=device,
+        multimodal_data_dir=config.MULTIMODAL_DATA_DIR
+    )
+    all_proteins = DataLoader.load_data(data_loader)
+    train_data, val_data = DataLoader.split_data(all_proteins, train_ratio=0.8, seed=42)
     print(f'Training samples: {len(train_data)}')
     print(f'Validation samples: {len(val_data)}')
 
-    data_info = data_loader.get_data_info(all_proteins[0])
+    if all_proteins:
+        sample_data_for_info = data_loader.prepare_sample(all_proteins[0])
+    else:
+        raise ValueError("No data loaded for tuning. Please check data paths.")
+    
+    dat_info = DataLoader.get_data_info(sample_data_for_info)
+    sequence_in_channels = dat_info['sequence_in_channels']
+    modal2_in_channels = dat_info.get('modal2_in_channels', None)
+    modal3_in_channels = dat_info.get('modal3_in_channels', None)
+    modal2_pe_dim = dat_info.get('modal2_pe_dim', None)
+    modal3_pe_dim = dat_info.get('modal3_pe_dim', None)
+
     for index, seed in enumerate(config.SEED):
         print(f'Experiment {index}')
         torch.cuda.manual_seed_all(seed)
         np.random.seed(seed)
         torch.manual_seed(seed)
 
-        atom_in_channels = data_info['atom_in_channels']
-        residue_in_channels = data_info['residue_in_channels']
-
-        model_class = DualStream
+        model_class = DualStreamPPI
 
         model = model_class(
-            atom_in_channels=atom_in_channels,
-            residue_in_channels=residue_in_channels,
+            in_channels=sequence_in_channels,
             pe_dim=config.PE_DIM,
-            fusion_hidden_dim=config.FUSION_HIDDEN_DIM,
+            fused_dim=config.FUSE_DIM,
             out_channels=config.OUT_CHANNELS,
-            dropout=config.DROPOUT,
-            heads=config.HEADS
+            modal2_in_channels=modal2_in_channels,
+            modal3_in_channels=modal3_in_channels,
+            modal2_pe_dim=modal2_pe_dim,
+            modal3_pe_dim=modal3_pe_dim
         ).to(device)
 
         PRE_MODEL = os.path.join(config.PRE_MODEL, f'{index}_best_model.pth')

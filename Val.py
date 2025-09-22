@@ -3,10 +3,10 @@ import os
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 from utils import calculate_metrics, find_best_threshold_by_f_beta
-from GASPPI import DualStream
+from GASPPI import DualStreamPPI
 import config
 from tqdm import tqdm
-from data_utils import LoadGraph
+from data_utils import DataLoader
 import numpy as np
 
 device = config.DEVICE
@@ -16,10 +16,10 @@ def A(models, val_proteins, data_loader, visualize=True):
     all_prob, all_target = [], []
     raw_features, extracted_features, labels = [], [], []
 
-    for val_p in tqdm(val_proteins, desc='Testing'):
-        data = data_loader.prepare_sample(val_p)
+    for val_p_idx in tqdm(val_proteins, desc='Testing'):
+        data = data_loader.prepare_sample(val_p_idx)
 
-        raw_feat = data.residue_x.cpu().numpy()
+        raw_feat = data.seq_x.cpu().numpy()
         raw_features.append(raw_feat)
 
         model_features = []
@@ -74,25 +74,38 @@ def A(models, val_proteins, data_loader, visualize=True):
 
 def main():
     models = []
-    data_loader = LoadGraph(device=device)
-    all_proteins = data_loader.load_data(config.VAL_DATA_PATH)
+    data_loader = DataLoader(
+        device=device,
+        multimodal_data_dir=config.MULTIMODAL_DATA_DIR
+    )
+    all_proteins = DataLoader.load_data(data_loader)
+    
+    if all_proteins:
+        sample_data_for_info = data_loader.prepare_sample(all_proteins[0])
+    else:
+        raise ValueError("No data loaded for validation. Please check data paths.")
+    
+    dat_info = DataLoader.get_dat_info(sample_data_for_info)
+    sequence_in_channels = dat_info['sequence_in_channels']
+    modal2_in_channels = dat_info.get('modal2_in_channels', None)
+    modal3_in_channels = dat_info.get('modal3_in_channels', None)
+    modal2_pe_dim = dat_info.get('modal2_pe_dim', None)
+    modal3_pe_dim = dat_info.get('modal3_pe_dim', None)
+
     for index, seed in enumerate(config.SEED):
         torch.cuda.manual_seed_all(seed)
         torch.manual_seed(seed)
 
-        data_info = data_loader.get_data_info(all_proteins[0])
-        atom_in_channels = data_info['atom_in_channels']
-        residue_in_channels = data_info['residue_in_channels']
-
-        model_class = DualStream
+        model_class = DualStreamPPI
         model = model_class(
-            atom_in_channels=atom_in_channels,
-            residue_in_channels=residue_in_channels,
+            in_channels=sequence_in_channels,
             pe_dim=config.PE_DIM,
-            fusion_hidden_dim=config.FUSION_HIDDEN_DIM,
+            fused_dim=config.FUSE_DIM,
             out_channels=config.OUT_CHANNELS,
-            dropout=config.DROPOUT,
-            heads=config.HEADS
+            modal2_in_channels=modal2_in_channels,
+            modal3_in_channels=modal3_in_channels,
+            modal2_pe_dim=modal2_pe_dim,
+            modal3_pe_dim=modal3_pe_dim
         ).to(device)
 
         best_model_path = os.path.join(config.TUNING_MODEL, f'{index}_best_model.pth')

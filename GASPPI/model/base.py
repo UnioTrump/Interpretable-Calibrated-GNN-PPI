@@ -11,8 +11,8 @@ from torch_sparse import SparseTensor
 import config
 
 class GNNEncoder(torch.nn.Module):
-    def __init__(self, in_channels: int, edge_dim: Optional[int] = None, hid_dim: int = 256,
-                 heads: int = 4, dropout: float = 0.2):
+    def __init__(self, in_channels: int, hid_dim: int, edge_dim: Optional[int] = None,
+                 heads: int = config.HEADS, dropout: float = config.DROPOUT):
         super().__init__()
         self.dropout = dropout
         self.edge_dim = edge_dim
@@ -25,15 +25,15 @@ class GNNEncoder(torch.nn.Module):
             
         self.convs = ModuleList()
         self.norms = ModuleList()
-        phi = GeneralConv(in_channels=self.hid_dim, out_channels=self.hid_dim,in_edge_channels=1,
-                        heads=heads, aggr='mean', directed_msg=False, l2_normalize=True)
+        phi = GeneralConv(in_channels=self.hid_dim, out_channels=self.hid_dim, in_edge_channels=config.EDGE_DIM,
+                        heads=heads, aggr=config.CONV_AGGR, directed_msg=config.CONV_DIRECTED, l2_normalize=config.CONV_L2_NORM)
         conv1 = AntiSymmetricConv(self.hid_dim, phi=phi)
         self.convs.append(conv1)
         for _ in range(config.NUM_LAYER):
             self.convs.append(conv1)
             self.norms.append(LayerNorm(self.hid_dim))
 
-        self.jk = JumpingKnowledge(mode='cat')
+        self.jk = JumpingKnowledge(mode=config.JK_MODE)
         self.out_dim : int = hid_dim * (config.NUM_LAYER + 1)
 
     def forward(self, x: Tensor, adj_t: SparseTensor) -> Tensor:

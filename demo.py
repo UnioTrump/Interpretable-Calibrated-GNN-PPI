@@ -23,8 +23,8 @@ def train(model, train_proteins, optimizer, data_loader):
         optimizer.zero_grad()
 
         batch_loss_sum = 0
-        for protein in batch_proteins:
-            data = data_loader.prepare_sample(protein)
+        for protein_idx in batch_proteins:
+            data = data_loader.prepare_sample(protein_idx)
             out = model(data)
             loss = criterion.compute_loss(out, data.y)
             batch_loss_sum += loss.item()
@@ -46,8 +46,8 @@ def test(model, val_proteins, data_loader):
     total_loss = 0
     all_probs, all_targets = [], []
 
-    for val_p in val_proteins:
-        data = data_loader.prepare_sample(val_p)
+    for val_p_idx in val_proteins:
+        data = data_loader.prepare_sample(val_p_idx)
         out = model(data)
         loss = criterion.compute_loss(out, data.y)
         total_loss += loss.item()
@@ -69,24 +69,40 @@ def main():
         torch.cuda.manual_seed_all(seed)
         np.random.seed(seed)
         torch.manual_seed(seed)
-        data_loader = DataLoader(device=device)
-        all_proteins = data_loader.load_data(config.DATA_PATH)
+        data_loader = DataLoader(
+            device=device,
+            multimodal_data_dir=config.MULTIMODAL_DATA_DIR
+        )
+        all_proteins = DataLoader.load_data(data_loader)
         print('FUCKING Load Done!!!!!')
-        train_data, val_data = data_loader.split_data(all_proteins, train_ratio=0.8, seed=42)
+        train_data, val_data = DataLoader.split_data(all_proteins, train_ratio=0.8, seed=42)
         print(f'Training samples: {len(train_data)}')
         print(f'Validation samples: {len(val_data)}')
 
-        data_info = data_loader.get_data_info(all_proteins[0])
-        sequence_in_channels = data_info['sequence_in_channels']
+        # Prepare a sample to get data info for model initialization
+        if all_proteins:
+            sample_data_for_info = data_loader.prepare_sample(all_proteins[0])
+        else:
+            raise ValueError("No data loaded. Please check data paths.")
+
+        dat_info = DataLoader.get_dat_info(sample_data_for_info)
+        sequence_in_channels = dat_info['sequence_in_channels']
+        modal2_in_channels = dat_info.get('modal2_in_channels', None)
+        modal3_in_channels = dat_info.get('modal3_in_channels', None)
+        modal2_pe_dim = dat_info.get('modal2_pe_dim', None)
+        modal3_pe_dim = dat_info.get('modal3_pe_dim', None)
+        print(f'modal2_in_channels: {modal2_in_channels}\n modal3_in_channels: {modal3_in_channels}\n modal2_pe_dim: {modal2_pe_dim}\n modal3_pe_dim: {modal3_pe_dim}')
 
         model_class = DualStreamPPI
         model = model_class(
             in_channels=sequence_in_channels,
             pe_dim=config.PE_DIM,
-            fused_dim=config.FUSION_HIDDEN_DIM,
+            fused_dim=config.FUSE_DIM,
             out_channels=config.OUT_CHANNELS,
-            dropout=config.DROPOUT,
-            heads=config.HEADS
+            modal2_in_channels=modal2_in_channels,
+            modal3_in_channels=modal3_in_channels,
+            modal2_pe_dim=modal2_pe_dim,
+            modal3_pe_dim=modal3_pe_dim
         ).to(device)
 
         optimizer = torch.optim.AdamW(model.parameters(), lr=config.LEARNING_RATE, weight_decay=config.WEIGHT_DECAY)
