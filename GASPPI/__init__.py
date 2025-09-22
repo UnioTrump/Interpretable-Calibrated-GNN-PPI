@@ -1,5 +1,5 @@
-from .model import MultiView
+from .model import DualStreamPPI
 
 __all__ = [
-    'MultiView',
+    'DualStreamPPI',
 ]

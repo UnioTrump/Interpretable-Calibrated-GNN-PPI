@@ -1,8 +1,8 @@
 from .base import GNNEncoder
-from .dual_stream import MultiView, GatedFusion
+from .dual_stream import (DualStreamPPI, GatedFusion)
 
 __all__ = [
     'GNNEncoder',
-    'MultiView',
+    'DualStreamPPI',
     'GatedFusion',
 ]

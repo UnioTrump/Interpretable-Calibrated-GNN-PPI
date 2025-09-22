@@ -1,9 +1,8 @@
-import torch
 import os
+import torch
 import numpy as np
 from torch_geometric.data import Data
 import config
-
 
 def frequency_filtering(eigenvalues, x_low, x_high):
 
@@ -88,12 +87,10 @@ def compute_fourier_features(x, edge_index):
 
     return attention_optimization_matrix
 
-
 class DataLoader:
 
     def __init__(self, device = None):
-        if device is None:
-            self.device = config.DEVICE
+        self.device = config.DEVICE
 
     @staticmethod
     def load_data(pkl_path):
@@ -105,7 +102,7 @@ class DataLoader:
         data = Data(
             seq_x=sample['r_node'],
             seq_adj_t=sample['residue_adj_t'],
-            r_edge_index=sample['r_edge_index'],
+            #r_edge_index=sample['r_edge_index'],
             y=sample['y'],
             r_pe=sample['r_pe'],
             r_fourier=sample['r_fourier']
@@ -134,7 +131,6 @@ class DataLoader:
             'sequence_in_channels': sample_data['r_node'].shape[1],
             'sequence_nodes': sample_data['r_node'].shape[0],
         }
-
 
 def load_data(pkl_path):
     return DataLoader.load_data(pkl_path)

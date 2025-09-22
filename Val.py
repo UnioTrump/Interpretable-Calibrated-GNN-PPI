@@ -6,7 +6,7 @@ from utils import calculate_metrics, find_best_threshold_by_f_beta
 from GASPPI import DualStream
 import config
 from tqdm import tqdm
-from data_utils import DataLoader
+from data_utils import LoadGraph
 import numpy as np
 
 device = config.DEVICE
@@ -74,7 +74,7 @@ def A(models, val_proteins, data_loader, visualize=True):
 
 def main():
     models = []
-    data_loader = DataLoader(device=device)
+    data_loader = LoadGraph(device=device)
     all_proteins = data_loader.load_data(config.VAL_DATA_PATH)
     for index, seed in enumerate(config.SEED):
         torch.cuda.manual_seed_all(seed)

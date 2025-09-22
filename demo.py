@@ -4,7 +4,7 @@ import os
 import numpy as np
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from utils import WeightedCrossEntropy, calculate_metrics, find_best_threshold_by_f_beta, plot_loss_curves
-from GASPPI import MultiView
+from GASPPI import DualStreamPPI
 import config
 from data_utils import DataLoader
 
@@ -79,14 +79,12 @@ def main():
         data_info = data_loader.get_data_info(all_proteins[0])
         sequence_in_channels = data_info['sequence_in_channels']
 
-        model_class = MultiView
+        model_class = DualStreamPPI
         model = model_class(
             in_channels=sequence_in_channels,
             pe_dim=config.PE_DIM,
-            fuse_dim=config.FUSION_HIDDEN_DIM,
+            fused_dim=config.FUSION_HIDDEN_DIM,
             out_channels=config.OUT_CHANNELS,
-            n_graphs=1,
-            fusion='concat',
             dropout=config.DROPOUT,
             heads=config.HEADS
         ).to(device)
