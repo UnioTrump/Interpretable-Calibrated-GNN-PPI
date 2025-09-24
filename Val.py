@@ -58,11 +58,11 @@ def A(models, val_proteins, data_loader, visualize=True):
         extracted_pca = pca.fit_transform(extracted_features)
 
         fig, axs = plt.subplots(1, 2, figsize=(12, 5))
-        scatter1 = axs[0].scatter(raw_pca[:,0], raw_pca[:,1], c=labels, cmap='coolwarm', alpha=0.6)
+        scatter1 = axs[0].scatter(raw_pca[:,0], raw_pca[:,1], c=labels, cmap='coolwarm', alpha=0.6, s=2)
         axs[0].set_title("Raw Features PCA")
         fig.colorbar(scatter1, ax=axs[0])
 
-        scatter2 = axs[1].scatter(extracted_pca[:,0], extracted_pca[:,1], c=labels, cmap='coolwarm', alpha=0.6)
+        scatter2 = axs[1].scatter(extracted_pca[:,0], extracted_pca[:,1], c=labels, cmap='coolwarm', alpha=0.6, s=2)
         axs[1].set_title("Extracted Features PCA")
         fig.colorbar(scatter2, ax=axs[1])
 
@@ -100,7 +100,6 @@ def main():
         model = model_class(
             in_channels=sequence_in_channels,
             pe_dim=config.PE_DIM,
-            fused_dim=config.FUSE_DIM,
             out_channels=config.OUT_CHANNELS,
             modal2_in_channels=modal2_in_channels,
             modal3_in_channels=modal3_in_channels,

@@ -25,22 +25,22 @@ class GNNEncoder(torch.nn.Module):
             
         self.convs = ModuleList()
         self.norms = ModuleList()
-        phi = GeneralConv(in_channels=self.hid_dim, out_channels=self.hid_dim, in_edge_channels=config.EDGE_DIM,
-                        heads=heads, aggr=config.CONV_AGGR, directed_msg=config.CONV_DIRECTED, l2_normalize=config.CONV_L2_NORM)
-        conv1 = AntiSymmetricConv(self.hid_dim, phi=phi)
-        self.convs.append(conv1)
+
         for _ in range(config.NUM_LAYER):
+            phi = GeneralConv(in_channels=self.hid_dim, out_channels=self.hid_dim, in_edge_channels=config.EDGE_DIM,
+                              heads=heads, aggr=config.CONV_AGGR, directed_msg=config.CONV_DIRECTED, l2_normalize=config.CONV_L2_NORM)
+            conv1 = AntiSymmetricConv(self.hid_dim, phi=phi)
             self.convs.append(conv1)
             self.norms.append(LayerNorm(self.hid_dim))
 
         self.jk = JumpingKnowledge(mode=config.JK_MODE)
-        self.out_dim : int = hid_dim * (config.NUM_LAYER + 1)
+        self.out_dim: int = hid_dim * config.NUM_LAYER
 
     def forward(self, x: Tensor, adj_t: SparseTensor) -> Tensor:
         if self.in_proj is not None:
             x = self.in_proj(x)
 
-        xs = [x]
+        xs = []
         for conv, norm in zip(self.convs, self.norms):
             # Convert adjacency format to edge_index format for TransformerConv
             if hasattr(adj_t, 'coo') and callable(getattr(adj_t, 'coo')):

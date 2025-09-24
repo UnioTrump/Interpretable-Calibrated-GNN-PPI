@@ -3,6 +3,7 @@ from torch.nn import Linear, Dropout, ReLU, Sequential
 from torch import Tensor
 from .base import GNNEncoder
 import config
+from torch.nn import LayerNorm
 
 class IntraModalFusion(torch.nn.Module):
     def __init__(self, semantic_dim: int, geometric_dim: int, output_dim: int, dropout: float = config.DROPOUT):
@@ -20,27 +21,34 @@ class IntraModalFusion(torch.nn.Module):
         fused_embeds = self.dropout_layer(fused_embeds)
         return fused_embeds
 
-class MultiModalConcatFusion(torch.nn.Module):
-    def __init__(self, input_dims: list[int], output_dim: int, dropout: float = config.DROPOUT):
+class CrossModalAttention(torch.nn.Module):
+    def __init__(self, embed_dim: int, num_heads: int, dropout: float):
         super().__init__()
-        self.total_input_dim = sum(input_dims)
-        self.fusion_linear = Linear(self.total_input_dim, output_dim)
-        self.dropout_layer = Dropout(p=dropout)
-        self.relu = ReLU()
-        self.out_dim = output_dim
+        self.mha = torch.nn.MultiheadAttention(embed_dim=embed_dim, num_heads=num_heads, dropout=dropout, batch_first=True)
+        self.norm1 = LayerNorm(embed_dim)
+        self.norm2 = LayerNorm(embed_dim)
+        self.dropout_layer = Dropout(dropout)
 
-    def forward(self, *embeds: Tensor) -> Tensor:
-        concatenated_embeds = torch.cat(embeds, dim=-1)
-        fused_embeds = self.fusion_linear(concatenated_embeds)
-        fused_embeds = self.relu(fused_embeds)
-        fused_embeds = self.dropout_layer(fused_embeds)
-        return fused_embeds
+        self.linear1 = Linear(embed_dim, embed_dim * 4) # Feed-forward expansion
+        self.linear2 = Linear(embed_dim * 4, embed_dim)
+        self.relu = ReLU()
+        self.out_dim = embed_dim
+
+    def forward(self, query: torch.Tensor, key_value: torch.Tensor) -> torch.Tensor:
+        attn_output, _ = self.mha(query, key_value, key_value)
+        attn_output = self.dropout_layer(attn_output)
+        out1 = self.norm1(query + attn_output)
+
+        ff_output = self.linear2(self.relu(self.linear1(out1)))
+        ff_output = self.dropout_layer(ff_output)
+        out2 = self.norm2(out1 + ff_output)
+        return out2
 
 class DualStreamPPI(torch.nn.Module):
     """Dual-stream model for PPI prediction."""
     def __init__(self, 
                  in_channels,
-                 pe_dim, fused_dim, out_channels,
+                 pe_dim, out_channels,
                  modal2_in_channels: int = None, modal3_in_channels: int = None,
                  modal2_pe_dim: int = None, modal3_pe_dim: int = None
                  ):
@@ -119,23 +127,18 @@ class DualStreamPPI(torch.nn.Module):
                 output_dim=config.Dual_FUSE_DIM
             )
 
-        # Build the input dimensions for the final multimodal fusion layer
-        input_dims_for_fusion = [self.feature_intra_fusion.out_dim]
-        if self.modal2_intra_fusion:
-            input_dims_for_fusion.append(self.modal2_intra_fusion.out_dim)
-        if self.modal3_intra_fusion:
-            input_dims_for_fusion.append(self.modal3_intra_fusion.out_dim)
-
-        self.fusion = MultiModalConcatFusion(
-            input_dims=input_dims_for_fusion,
-            output_dim=config.FUSE_DIM
+        self.cross_fuse = CrossModalAttention(
+            embed_dim=config.Dual_FUSE_DIM,
+            num_heads=config.HEADS,
+            dropout=config.DROPOUT
         )
+        self.fusion_output_dim = config.Dual_FUSE_DIM
 
         self.classifier = Sequential(
-            Linear(self.fusion.out_dim, self.fusion.out_dim // 2),
+            Linear(self.fusion_output_dim, self.fusion_output_dim // 2),
             ReLU(),
             Dropout(p=config.DROPOUT),
-            Linear(self.fusion.out_dim // 2, out_channels)
+            Linear(self.fusion_output_dim // 2, out_channels)
         )
 
     def forward(self, data):
@@ -152,22 +155,25 @@ class DualStreamPPI(torch.nn.Module):
         all_fused_modal_embeds = [feature_fused_embeds]
 
         # Process Modal 2 Stream
-        if self.modal2_semantic_stream and hasattr(data, 'modal2_x') and hasattr(data, 'modal2_adj_t')\
-            and hasattr(data, 'modal2_r_pe') and hasattr(data, 'modal2_r_fourier'):
+        if self.modal2_semantic_stream and hasattr(data, 'modal2_x') and hasattr(data, 'modal2_adj_t') and hasattr(data, 'modal2_r_pe') and hasattr(data, 'modal2_r_fourier'):
             modal2_semantic_embeds = self.modal2_semantic_stream(data.modal2_x, data.modal2_adj_t)
             modal2_geometric_embeds = self.modal2_geometric_stream(data.modal2_r_pe, data.modal2_r_fourier)
             modal2_fused_embeds = self.modal2_intra_fusion(modal2_semantic_embeds, modal2_geometric_embeds)
             all_fused_modal_embeds.append(modal2_fused_embeds)
 
         # Process Modal 3 Stream
-        if self.modal3_semantic_stream and hasattr(data, 'modal3_x') and hasattr(data, 'modal3_adj_t')\
-            and hasattr(data, 'modal3_r_pe') and hasattr(data, 'modal3_r_fourier'):
+        if self.modal3_semantic_stream and hasattr(data, 'modal3_x') and hasattr(data, 'modal3_adj_t') and hasattr(data, 'modal3_r_pe') and hasattr(data, 'modal3_r_fourier'):
             modal3_semantic_embeds = self.modal3_semantic_stream(data.modal3_x, data.modal3_adj_t)
             modal3_geometric_embeds = self.modal3_geometric_stream(data.modal3_r_pe, data.modal3_r_fourier)
             modal3_fused_embeds = self.modal3_intra_fusion(modal3_semantic_embeds, modal3_geometric_embeds)
             all_fused_modal_embeds.append(modal3_fused_embeds)
 
-        fused_embeds = self.fusion(*all_fused_modal_embeds)
+        stacked_modal_embeds = torch.stack(all_fused_modal_embeds, dim=1)
+
+        cross_attn_output = self.cross_fuse(stacked_modal_embeds, stacked_modal_embeds)
+
+        fused_embeds = torch.mean(cross_attn_output, dim=1)
+
         return fused_embeds
 
     def MLP(self, embedding):

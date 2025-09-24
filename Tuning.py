@@ -3,7 +3,7 @@ import torch
 import os
 import numpy as np
 from torch.optim.lr_scheduler import CosineAnnealingLR
-from utils import WeightedCrossEntropy, calculate_metrics, find_best_threshold_by_f_beta, plot_loss_curves
+from utils import calculate_metrics, find_best_threshold_by_f_beta, plot_loss_curves, HybridLoss
 from GASPPI import DualStreamPPI
 import config
 from data_utils import DataLoader
@@ -15,7 +15,14 @@ def train(model, train_proteins, optimizer, data_loader):
     np.random.shuffle(train_proteins)
 
     total_loss = 0
-    criterion = WeightedCrossEntropy(pos_wt=torch.tensor(config.POS_WEIGHT, device=device), device=device)
+    criterion = HybridLoss(
+        pos_wt=torch.tensor(config.POS_WEIGHT, device=device),
+        alpha=config.ALPHA,
+        beta=config.BETA,
+        device=device,
+        ce_weight=config.B_WEIGHT,
+        tversky_weight=config.T_WEIGHT
+    )
 
     for i in range(0, len(train_proteins), config.BATCH_SIZE):
         batch_proteins = train_proteins[i:i + config.BATCH_SIZE]
@@ -41,7 +48,14 @@ def train(model, train_proteins, optimizer, data_loader):
 @torch.no_grad()
 def test(model, val_proteins, data_loader):
     model.eval()
-    criterion = WeightedCrossEntropy(pos_wt=torch.tensor(config.POS_WEIGHT, device=device), device=device)
+    criterion = HybridLoss(
+        pos_wt=torch.tensor(config.POS_WEIGHT, device=device),
+        alpha=config.ALPHA,
+        beta=config.BETA,
+        device=device,
+        ce_weight=config.B_WEIGHT,
+        tversky_weight=config.T_WEIGHT
+    )
     total_loss = 0
     all_probs, all_targets = [], []
 
@@ -96,7 +110,6 @@ def main():
         model = model_class(
             in_channels=sequence_in_channels,
             pe_dim=config.PE_DIM,
-            fused_dim=config.FUSE_DIM,
             out_channels=config.OUT_CHANNELS,
             modal2_in_channels=modal2_in_channels,
             modal3_in_channels=modal3_in_channels,
@@ -152,7 +165,7 @@ def main():
                 print(f"\nEarly stopping at epoch {epoch + 1}")
                 break
 
-        plot_save_path = os.path.join(config.PLOT_DIR, f'{config.PROJECT_NAME}_loss_curve.png')
+        plot_save_path = os.path.join(config.PLOT_DIR, f'Tune_{index}_loss_curve.png')
         plot_loss_curves(train_losses, val_losses, save_path=plot_save_path)
 
 if __name__ == '__main__':

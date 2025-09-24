@@ -6,7 +6,7 @@ PROJECT_NAME = "DualStreamPPI_v2"
 
 MULTIMODAL_DATA_DIR = r'/../gz-data/Train/'
 TUNING_DATA_PATH = r'/../gz-data/Tune'
-VAL_DATA_PATH = r'/../gz-data/Val'
+VAL_DATA_PATH = r'/../gz-data/Test'
 
 PE_DIM = 16
 GAUSSIAN_SIGMA = 4
@@ -22,24 +22,28 @@ CONV_L2_NORM = True
 
 JK_MODE = 'cat'
 
-NUM_LAYER = 2
-FUSE_DIM = 64
+NUM_LAYER = 1
 Dual_FUSE_DIM = 128
 OUT_CHANNELS = 1
-HEADS = 3
+HEADS = 2       # from 3 to 2 time:2025-9-23 22:18
 DROPOUT = 0.4
 
 EPOCHS = 100
 BATCH_SIZE = 32
-LEARNING_RATE = 4e-4
-WEIGHT_DECAY = 4e-4
-POS_WEIGHT = 1
+LEARNING_RATE = 1e-4    # from 4e-4 to 1e-3time: 2025-9-23 22:26
+WEIGHT_DECAY = 1e-3
+POS_WEIGHT = 0.5        # Change from 1 to 0.5 time 2025-9-23 12:41
 GRAD_NORM = 0.5
 PATIENCE = 8
+
+ALPHA = 0.7
+BETA = 0.3
+B_WEIGHT = 0.5
+T_WEIGHT = 0.5
 
 PRE_MODEL = '/../gz-data/TRAINING_OUTPUT/Saved_model'
 TUNING_MODEL = '/../gz-data/TRAINING_OUTPUT/Tuning_model'
 PLOT_DIR = '/../gz-data/TRAINING_OUTPUT/plots'
 
 SCHEDULER_T_MAX = EPOCHS // 2
-SCHEDULER_ETA_MIN = 1e-6
+SCHEDULER_ETA_MIN = 1e-5
