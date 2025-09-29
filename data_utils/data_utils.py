@@ -81,7 +81,6 @@ class DataLoader:
         self.modal_names_list = []
 
         if multimodal_data_dir:
-            # Filter out .ipynb_checkpoints and ensure only .pkl files are processed
             all_pkl_files = sorted([f.name for f in os.scandir(multimodal_data_dir) if f.is_file() and f.name.endswith('.pkl') and not f.name.startswith('.ipynb_checkpoints')])
 
             if not all_pkl_files:
@@ -108,18 +107,15 @@ class DataLoader:
             return []
 
     def prepare_sample(self, idx):
-        # Helper function to move tensor to device, handle SparseTensor
         def move_to_device(dat_item, target_device):
             if isinstance(dat_item, torch.Tensor):
                 return dat_item.to(target_device)
             elif isinstance(dat_item, SparseTensor):
                 return dat_item.to(target_device)
-            return dat_item # Return as is if not a tensor/sparse tensor
+            return dat_item
 
-        # Create a dictionary to hold all data for the current sample
         all_modal_sample_data = {}
 
-        # Load data for each modality
         for i, modal_list in enumerate(self.all_modal_data_lists):
             modal_name = self.modal_names_list[i]
             sample_modal = modal_list[idx]
@@ -128,26 +124,21 @@ class DataLoader:
                 'adj_t': move_to_device(sample_modal.get('residue_adj_t', None), self.device),
                 'pe': move_to_device(sample_modal.get('r_pe', None), self.device),
                 'fourier': move_to_device(sample_modal.get('r_fourier', None), self.device),
-                'y': move_to_device(sample_modal.get('y', None), self.device) # y is now loaded for each modal
+                'y': move_to_device(sample_modal.get('y', None), self.device)
             }
 
-        # The `y` label can be taken from any modal, so we'll take it from the first one
-        # Note: If no modality exists, this will result in `y` being None, which should be handled by the user's model/loss.
         y_label = None
         if self.modal_names_list and self.modal_names_list[0] in all_modal_sample_data:
             y_label = all_modal_sample_data[self.modal_names_list[0]].get('y', None)
 
-        # Create the Data object with y_label. x, adj_t, pe, fourier will be added dynamically.
         data = Data(y=y_label)
 
-        # Add all modal data to the Data object dynamically
         for modal_name, modal_data in all_modal_sample_data.items():
             setattr(data, f'{modal_name}_x', modal_data['x'])
             setattr(data, f'{modal_name}_adj_t', modal_data['adj_t'])
             setattr(data, f'{modal_name}_pe', modal_data['pe'])
             setattr(data, f'{modal_name}_fourier', modal_data['fourier'])
-        
-        # Add the list of modal names to the Data object for downstream use
+
         data.modal_names_list = self.modal_names_list
 
         return data
@@ -169,17 +160,20 @@ class DataLoader:
     @staticmethod
     def dat_ifo(sample_data):
         info = {}
-        
+
         if not hasattr(sample_data, 'modal_names_list') or not sample_data.modal_names_list:
-            return info # Return empty info if no modalities are present
+            return info
 
         for modal_name in sample_data.modal_names_list:
             x_attr = getattr(sample_data, f'{modal_name}_x', None)
             pe_attr = getattr(sample_data, f'{modal_name}_pe', None)
-            
+            fourier_attr = getattr(sample_data, f'{modal_name}_fourier', None)
+
             if x_attr is not None:
                 info[f'{modal_name}_in_channels'] = x_attr.shape[1]
-                info[f'{modal_name}_nodes'] = x_attr.shape[0] # Add nodes info for each modal
+                info[f'{modal_name}_nodes'] = x_attr.shape[0]
             if pe_attr is not None:
                 info[f'{modal_name}_pe_dim'] = pe_attr.shape[1]
+            if fourier_attr is not None:
+                info[f'{modal_name}_fourier_dim'] = fourier_attr.shape[1]
         return info

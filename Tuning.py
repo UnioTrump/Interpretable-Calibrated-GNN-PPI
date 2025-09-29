@@ -101,13 +101,11 @@ def main():
                 'name': modal_name,
                 'in_channels': modal_dims_info.get(f'{modal_name}_in_channels', 0),
                 'pe_dim': modal_dims_info.get(f'{modal_name}_pe_dim', config.PE_DIM),
-                'fourier_dim': modal_dims_info.get(f'{modal_name}_pe_dim', config.PE_DIM) # Assuming fourier_dim is same as pe_dim
             }
             modal_cfg.append(cfg_entry)
 
-    # Removed loop for single seed execution
     seed = config.SEED
-    print(f'Experiment 0') # Adjusted print statement since there's only one experiment
+    print(f'Experiment 0')
     torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -119,7 +117,7 @@ def main():
         out_channels=config.OUT_CHANNELS
     ).to(device)
 
-    PRE_MODEL = os.path.join(config.PRE_MODEL, f'0_best_model.pth') # Adjusted path
+    PRE_MODEL = os.path.join(config.PRE_MODEL, f'0_best_model.pth')
     model.load_state_dict(torch.load(PRE_MODEL, map_location=device))
 
     # freeze
@@ -134,7 +132,7 @@ def main():
     best_loss = 999
     patience_counter = 0
     os.makedirs(config.TUNING_MODEL, exist_ok=True)
-    best_model_path = os.path.join(config.TUNING_MODEL, f'0_best_model.pth') # Adjusted path
+    best_model_path = os.path.join(config.TUNING_MODEL, f'0_best_model.pth')
 
     print("Starting fine tuning...")
     train_losses, val_losses = [], []
@@ -167,7 +165,7 @@ def main():
             print(f"\nEarly stopping at epoch {epoch + 1}")
             break
 
-    plot_save_path = os.path.join(config.PLOT_DIR, f'Tune_0_loss_curve.png') # Adjusted plot save path
+    plot_save_path = os.path.join(config.PLOT_DIR, f'Tune_0_loss_curve.png')
     plot_loss_curves(train_losses, val_losses, save_path=plot_save_path)
 
 if __name__ == '__main__':

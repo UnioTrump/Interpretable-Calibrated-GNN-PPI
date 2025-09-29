@@ -96,7 +96,6 @@ def main():
                 'name': modal_name,
                 'in_channels': modal_dims_info.get(f'{modal_name}_in_channels', 0),
                 'pe_dim': modal_dims_info.get(f'{modal_name}_pe_dim', config.PE_DIM),
-                'fourier_dim': modal_dims_info.get(f'{modal_name}_pe_dim', config.PE_DIM) # Assuming fourier_dim is same as pe_dim
             }
             modal_cfg.append(cfg_entry)
 
@@ -139,7 +138,6 @@ def main():
         val_loss, metrics, best_threshold = test(model, val_data, data_loader)
         val_losses.append(val_loss)
 
-        # Step the appropriate scheduler
         if epoch < warmup_epochs:
             warmup_scheduler.step()
         else:

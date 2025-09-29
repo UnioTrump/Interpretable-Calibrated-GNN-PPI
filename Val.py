@@ -25,7 +25,7 @@ def A(model, val_proteins, data_loader,Dset_name, visualize=True, ):
         extracted_features.append(combined_features.cpu().numpy())
 
         with torch.no_grad():
-            pred = model.classifier(combined_features) # Changed from model.MLP to model.classifier
+            pred = model.classifier(combined_features)
             probs = torch.sigmoid(pred).squeeze()
 
         all_prob.append(probs.detach().cpu())
@@ -38,22 +38,20 @@ def A(model, val_proteins, data_loader,Dset_name, visualize=True, ):
     threshold, _ = find_best_threshold_by_f_beta(all_targets_tensor, all_probs_tensor, num_threshold=100)
     metrics = calculate_metrics(y_true=all_targets_tensor, y_scores=all_probs_tensor, threshold=threshold)
 
-    # --------- PCA可视化部分 ---------
     if visualize:
         extracted_features = torch.tensor(np.concatenate(extracted_features, axis=0))
         labels = np.concatenate(labels, axis=0)
 
-        # PCA降维到2D
         pca = PCA(n_components=2)
         extracted_pca = pca.fit_transform(extracted_features)
 
-        fig, axs = plt.subplots(1, 1, figsize=(6, 5)) # Only one subplot now
+        fig, axs = plt.subplots(1, 1, figsize=(6, 5))
         scatter = axs.scatter(extracted_pca[:,0], extracted_pca[:,1], c=labels, cmap='coolwarm', alpha=0.6, s=1)
-        axs.set_title("Fused Features PCA") # Changed title
+        axs.set_title("Fused Features PCA")
         fig.colorbar(scatter, ax=axs)
 
         plt.tight_layout()
-        plt.savefig(f"{Dset_name}_fused_pca_vis.png", dpi=300) # Changed filename
+        plt.savefig(f"{Dset_name}_fused_pca_vis.png", dpi=300)
         plt.close()
 
     return metrics
@@ -76,7 +74,6 @@ def main():
                 'name': modal_name,
                 'in_channels': modal_dims_info.get(f'{modal_name}_in_channels', 0),
                 'pe_dim': modal_dims_info.get(f'{modal_name}_pe_dim', config.PE_DIM),
-                'fourier_dim': modal_dims_info.get(f'{modal_name}_pe_dim', config.PE_DIM) # Assuming fourier_dim is same as pe_dim
             }
             modal_cfg.append(cfg_entry)
 
