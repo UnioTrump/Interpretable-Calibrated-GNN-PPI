@@ -2,7 +2,7 @@ from tqdm import tqdm
 import torch
 import os
 import numpy as np
-from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.optim.lr_scheduler import ReduceLROnPlateau, LambdaLR
 from utils import calculate_metrics, find_best_threshold_by_f_beta, plot_loss_curves, HybridLoss
 from GASPPI import DualStreamPPI
 import config
@@ -79,83 +79,94 @@ def test(model, val_proteins, data_loader):
 
 def main():
 
-    for index, seed in enumerate(config.SEED):
-        torch.cuda.manual_seed_all(seed)
-        np.random.seed(seed)
-        torch.manual_seed(seed)
-        data_loader = DataLoader(
-            device=device,
-            multimodal_data_dir=config.MULTIMODAL_DATA_DIR
-        )
-        all_proteins = DataLoader.load_data(data_loader)
-        train_data, val_data = DataLoader.split_data(all_proteins, train_ratio=0.8, seed=42)
+    data_loader = DataLoader(
+        device=device,
+        multimodal_data_dir=config.MULTIMODAL_DATA_DIR
+    )
+    all_proteins = DataLoader.load_data(data_loader)
+    train_data, val_data = DataLoader.split_data(all_proteins, train_ratio=0.8, seed=42)
+    dat_info_sample = data_loader.prepare_sample(all_proteins[0])
 
-        # Prepare a sample to get data info for model initialization
-        if all_proteins:
-            sample_data_for_info = data_loader.prepare_sample(all_proteins[0])
+    modal_dims_info = DataLoader.dat_ifo(dat_info_sample)
+    
+    modal_cfg = []
+    if hasattr(dat_info_sample, 'modal_names_list'):
+        for modal_name in dat_info_sample.modal_names_list:
+            cfg_entry = {
+                'name': modal_name,
+                'in_channels': modal_dims_info.get(f'{modal_name}_in_channels', 0),
+                'pe_dim': modal_dims_info.get(f'{modal_name}_pe_dim', config.PE_DIM),
+                'fourier_dim': modal_dims_info.get(f'{modal_name}_pe_dim', config.PE_DIM) # Assuming fourier_dim is same as pe_dim
+            }
+            modal_cfg.append(cfg_entry)
+
+    seed = config.SEED
+    torch.cuda.manual_seed_all(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+
+    model_class = DualStreamPPI
+    model = model_class(
+        modal_cfg=modal_cfg,
+        out_channels=config.OUT_CHANNELS
+    ).to(device)
+
+    optimizer = torch.optim.AdamW(model.parameters(), lr=config.LEARNING_RATE, weight_decay=config.WEIGHT_DECAY)
+    warmup_epochs = 5
+
+    def lr_lambda(epoch):
+        if epoch < warmup_epochs:
+            return (epoch + 1) / warmup_epochs
+        return 1.0
+
+    warmup_scheduler = LambdaLR(optimizer, lr_lambda)
+    reduce_lr_scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5, min_lr=config.SCHEDULER_ETA_MIN)
+
+    os.makedirs(config.PRE_MODEL, exist_ok=True)
+
+    print("Starting training...")
+
+    train_losses, val_losses = [], []
+    best_loss = float('inf')
+    patience_counter = 0
+
+    epoch_pbar = tqdm(range(config.EPOCHS), desc="Training Progress", ncols=180)
+
+    for epoch in epoch_pbar:
+        train_loss = train(model, train_data, optimizer, data_loader)
+        train_losses.append(train_loss)
+
+        val_loss, metrics, best_threshold = test(model, val_data, data_loader)
+        val_losses.append(val_loss)
+
+        # Step the appropriate scheduler
+        if epoch < warmup_epochs:
+            warmup_scheduler.step()
         else:
-            raise ValueError("No data loaded. Please check data paths.")
+            reduce_lr_scheduler.step(val_loss)
 
-        dat_info = DataLoader.data_ifo(sample_data_for_info)
-        sequence_in_channels = dat_info['sequence_in_channels']
-        modal2_in_channels = dat_info.get('modal2_in_channels', None)
-        modal3_in_channels = dat_info.get('modal3_in_channels', None)
-        modal2_pe_dim = dat_info.get('modal2_pe_dim', None)
-        modal3_pe_dim = dat_info.get('modal3_pe_dim', None)
+        if val_losses[-1] < best_loss:
+            best_loss = val_losses[-1]
+            patience_counter = 0
+            torch.save(model.state_dict(), os.path.join(config.PRE_MODEL, f'Train.pth'))
+        else:
+            patience_counter += 1
 
-        model_class = DualStreamPPI
-        model = model_class(
-            in_channels=sequence_in_channels,
-            pe_dim=config.PE_DIM,
-            out_channels=config.OUT_CHANNELS,
-            modal2_in_channels=modal2_in_channels,
-            modal3_in_channels=modal3_in_channels,
-            modal2_pe_dim=modal2_pe_dim,
-            modal3_pe_dim=modal3_pe_dim
-        ).to(device)
+        if patience_counter >= config.PATIENCE:
+            print(f"Early stopping at epoch {epoch + 1}")
+            break
 
-        optimizer = torch.optim.AdamW(model.parameters(), lr=config.LEARNING_RATE, weight_decay=config.WEIGHT_DECAY)
-        scheduler = CosineAnnealingLR(optimizer, T_max=config.SCHEDULER_T_MAX, eta_min=config.SCHEDULER_ETA_MIN)
-        os.makedirs(config.PRE_MODEL, exist_ok=True)
+        epoch_pbar.set_postfix({
+            "Train Loss": f"{train_loss:.4f}",
+            "Val Loss": f"{val_loss:.4f}",
+            "AUPRC": f"{metrics['pr_auc']:.4f}",
+            "AUROC": f"{metrics['roc_auc']:.4f}",
+            "Patience": f"{patience_counter}/{config.PATIENCE}"
+        })
+    save_path=os.path.join(config.PLOT_DIR, f'Train.png')
+    plot_loss_curves(train_losses, val_losses, save_path)
 
-        print("Starting training...")
-        print(f'Experiment {index}')
-        train_losses, val_losses = [], []
-        best_loss = 999
-        patience_counter = 0
 
-        epoch_pbar = tqdm(range(config.EPOCHS), desc="Training Progress", ncols=180)
-
-        for epoch in epoch_pbar:
-            train_loss = train(model, train_data, optimizer, data_loader)
-            train_losses.append(train_loss)
-
-            val_loss, metrics, best_threshold = test(model, val_data, data_loader)
-            val_losses.append(val_loss)
-
-            pr_auc = metrics['pr_auc']
-            scheduler.step()
-
-            if val_losses[-1] < best_loss:
-                best_loss = val_losses[-1]
-                patience_counter = 0
-                best_model_path = os.path.join(config.PRE_MODEL, f'{index}_best_model.pth')
-                torch.save(model.state_dict(), best_model_path)
-            else:
-                patience_counter += 1
-
-            epoch_pbar.set_postfix({
-                'Train Loss': f'{train_loss:.4f}', 'Val Loss': f'{val_loss:.4f}',
-                'Val PR_AUC': f'{pr_auc:.4f}', 'Val ROC_AUC': f'{metrics["roc_auc"]:.4f}',
-                'Patience': f'{patience_counter}/{config.PATIENCE}'
-            })
-
-            if patience_counter >= config.PATIENCE:
-                print(f"\nEarly stopping at epoch {epoch + 1}")
-                break
-
-        plot_save_path = os.path.join(config.PLOT_DIR, f'{index}_loss_curve.png')
-        plot_loss_curves(train_losses, val_losses, save_path=plot_save_path)
 
 if __name__ == '__main__':
     main()

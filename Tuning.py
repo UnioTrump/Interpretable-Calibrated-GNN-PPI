@@ -88,85 +88,87 @@ def main():
     print(f'Validation samples: {len(val_data)}')
 
     if all_proteins:
-        sample_data_for_info = data_loader.prepare_sample(all_proteins[0])
+        dat_info_sample = data_loader.prepare_sample(all_proteins[0])
     else:
         raise ValueError("No data loaded for tuning. Please check data paths.")
     
-    dat_info = DataLoader.data_ifo(sample_data_for_info)
-    sequence_in_channels = dat_info['sequence_in_channels']
-    modal2_in_channels = dat_info.get('modal2_in_channels', None)
-    modal3_in_channels = dat_info.get('modal3_in_channels', None)
-    modal2_pe_dim = dat_info.get('modal2_pe_dim', None)
-    modal3_pe_dim = dat_info.get('modal3_pe_dim', None)
+    modal_dims_info = DataLoader.dat_ifo(dat_info_sample)
+    
+    modal_cfg = []
+    if hasattr(dat_info_sample, 'modal_names_list'):
+        for modal_name in dat_info_sample.modal_names_list:
+            cfg_entry = {
+                'name': modal_name,
+                'in_channels': modal_dims_info.get(f'{modal_name}_in_channels', 0),
+                'pe_dim': modal_dims_info.get(f'{modal_name}_pe_dim', config.PE_DIM),
+                'fourier_dim': modal_dims_info.get(f'{modal_name}_pe_dim', config.PE_DIM) # Assuming fourier_dim is same as pe_dim
+            }
+            modal_cfg.append(cfg_entry)
 
-    for index, seed in enumerate(config.SEED):
-        print(f'Experiment {index}')
-        torch.cuda.manual_seed_all(seed)
-        np.random.seed(seed)
-        torch.manual_seed(seed)
+    # Removed loop for single seed execution
+    seed = config.SEED
+    print(f'Experiment 0') # Adjusted print statement since there's only one experiment
+    torch.cuda.manual_seed_all(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
 
-        model_class = DualStreamPPI
+    model_class = DualStreamPPI
 
-        model = model_class(
-            in_channels=sequence_in_channels,
-            pe_dim=config.PE_DIM,
-            out_channels=config.OUT_CHANNELS,
-            modal2_in_channels=modal2_in_channels,
-            modal3_in_channels=modal3_in_channels,
-            modal2_pe_dim=modal2_pe_dim,
-            modal3_pe_dim=modal3_pe_dim
-        ).to(device)
+    model = model_class(
+        modal_cfg=modal_cfg,
+        out_channels=config.OUT_CHANNELS
+    ).to(device)
 
-        PRE_MODEL = os.path.join(config.PRE_MODEL, f'{index}_best_model.pth')
-        model.load_state_dict(torch.load(PRE_MODEL, map_location=device))
+    PRE_MODEL = os.path.join(config.PRE_MODEL, f'0_best_model.pth') # Adjusted path
+    model.load_state_dict(torch.load(PRE_MODEL, map_location=device))
 
-        # freeze
-        for param in model.parameters():
-            param.requires_grad = False
-        for param in model.classifier[-1].parameters():
-            param.requires_grad = True
+    # freeze
+    for param in model.parameters():
+        param.requires_grad = False
+    for param in model.classifier[-1].parameters():
+        param.requires_grad = True
 
-        optimizer = torch.optim.AdamW(model.parameters(), lr=config.LEARNING_RATE, weight_decay=config.WEIGHT_DECAY)
-        scheduler = CosineAnnealingLR(optimizer, T_max=config.SCHEDULER_T_MAX, eta_min=config.SCHEDULER_ETA_MIN)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=config.LEARNING_RATE, weight_decay=config.WEIGHT_DECAY)
+    scheduler = CosineAnnealingLR(optimizer, T_max=config.SCHEDULER_T_MAX, eta_min=config.SCHEDULER_ETA_MIN)
 
-        best_loss = 999
-        patience_counter = 0
-        os.makedirs(config.TUNING_MODEL, exist_ok=True)
-        best_model_path = os.path.join(config.TUNING_MODEL, f'{index}_best_model.pth')
+    best_loss = 999
+    patience_counter = 0
+    os.makedirs(config.TUNING_MODEL, exist_ok=True)
+    best_model_path = os.path.join(config.TUNING_MODEL, f'0_best_model.pth') # Adjusted path
 
-        print("Starting fine tuning...")
-        train_losses, val_losses = [], []
-        epoch_pbar = tqdm(range(config.EPOCHS), desc="Training Progress", ncols=180)
+    print("Starting fine tuning...")
+    train_losses, val_losses = [], []
+    epoch_pbar = tqdm(range(config.EPOCHS), desc="Training Progress", ncols=180)
 
-        for epoch in epoch_pbar:
-            train_loss = train(model, train_data, optimizer, data_loader)
-            train_losses.append(train_loss)
+    for epoch in epoch_pbar:
+        train_loss = train(model, train_data, optimizer, data_loader)
+        train_losses.append(train_loss)
 
-            val_loss, metrics, best_threshold = test(model, val_data, data_loader)
-            val_losses.append(val_loss)
+        val_loss, metrics, best_threshold = test(model, val_data, data_loader)
+        val_losses.append(val_loss)
 
-            pr_auc = metrics['pr_auc']
-            scheduler.step()
+        pr_auc = metrics['pr_auc']
+        scheduler.step()
 
-            if val_losses[-1] < best_loss:
-                best_loss = val_losses[-1]
-                patience_counter = 0
-                torch.save(model.state_dict(), best_model_path)
-            else:
-                patience_counter += 1
+        if val_losses[-1] < best_loss:
+            best_loss = val_losses[-1]
+            patience_counter = 0
+            torch.save(model.state_dict(), best_model_path)
+        else:
+            patience_counter += 1
 
-            epoch_pbar.set_postfix({
-                'Train Loss': f'{train_loss:.4f}', 'Val Loss': f'{val_loss:.4f}',
-                'Val PR_AUC': f'{pr_auc:.4f}', 'Val ROC_AUC': f'{metrics["roc_auc"]:.4f}',
-                'Patience': f'{patience_counter}/{config.PATIENCE}'
-            })
+        epoch_pbar.set_postfix({
+            'Train Loss': f'{train_loss:.4f}', 'Val Loss': f'{val_loss:.4f}',
+            'Val PR_AUC': f'{pr_auc:.4f}', 'Val ROC_AUC': f'{metrics["roc_auc"]:.4f}',
+            'Patience': f'{patience_counter}/{config.PATIENCE}'
+        })
 
-            if patience_counter >= config.PATIENCE:
-                print(f"\nEarly stopping at epoch {epoch + 1}")
-                break
+        if patience_counter >= config.PATIENCE:
+            print(f"\nEarly stopping at epoch {epoch + 1}")
+            break
 
-        plot_save_path = os.path.join(config.PLOT_DIR, f'Tune_{index}_loss_curve.png')
-        plot_loss_curves(train_losses, val_losses, save_path=plot_save_path)
+    plot_save_path = os.path.join(config.PLOT_DIR, f'Tune_0_loss_curve.png') # Adjusted plot save path
+    plot_loss_curves(train_losses, val_losses, save_path=plot_save_path)
 
 if __name__ == '__main__':
     main()

@@ -3,7 +3,7 @@ from torch.nn import Linear, Dropout, ReLU, Sequential
 from torch import Tensor
 from .base import GNNEncoder
 import config
-from torch.nn import LayerNorm
+from torch.nn import TransformerEncoder, TransformerEncoderLayer, ModuleList
 
 class IntraModalFusion(torch.nn.Module):
     def __init__(self, semantic_dim: int, geometric_dim: int, output_dim: int, dropout: float = config.DROPOUT):
@@ -21,118 +21,101 @@ class IntraModalFusion(torch.nn.Module):
         fused_embeds = self.dropout_layer(fused_embeds)
         return fused_embeds
 
-class CrossModalAttention(torch.nn.Module):
-    def __init__(self, embed_dim: int, num_heads: int, dropout: float):
+class FuseBlock(torch.nn.Module):
+    def __init__(self, input_dims: list[int], embed_dim: int, num_heads: int, num_layers: int, dropout: float):
         super().__init__()
-        self.mha = torch.nn.MultiheadAttention(embed_dim=embed_dim, num_heads=num_heads, dropout=dropout, batch_first=True)
-        self.norm1 = LayerNorm(embed_dim)
-        self.norm2 = LayerNorm(embed_dim)
-        self.dropout_layer = Dropout(dropout)
+        self.embed_dim = embed_dim
+        
+        # Linear projections for each modality to map to a common embed_dim
+        self.projection_layers = ModuleList([
+            Linear(input_dim, embed_dim) for input_dim in input_dims
+        ])
+        
+        # Transformer Encoder for fusion
+        encoder_layer = TransformerEncoderLayer(
+            d_model=embed_dim, 
+            nhead=num_heads, 
+            dropout=dropout, 
+            batch_first=True # Input will be (batch_size, seq_len, feature_dim)
+        )
+        self.transformer_encoder = TransformerEncoder(encoder_layer, num_layers=num_layers)
+        
+    def forward(self, modal_features_list: list[Tensor]) -> Tensor:
 
-        self.linear1 = Linear(embed_dim, embed_dim * 4) # Feed-forward expansion
-        self.linear2 = Linear(embed_dim * 4, embed_dim)
-        self.relu = ReLU()
-        self.out_dim = embed_dim
+        projected_features = []
+        for i, feature in enumerate(modal_features_list):
+            if feature is not None:
+                projected_features.append(self.projection_layers[i](feature))
 
-    def forward(self, query: torch.Tensor, key_value: torch.Tensor) -> torch.Tensor:
-        attn_output, _ = self.mha(query, key_value, key_value)
-        attn_output = self.dropout_layer(attn_output)
-        out1 = self.norm1(query + attn_output)
-
-        ff_output = self.linear2(self.relu(self.linear1(out1)))
-        ff_output = self.dropout_layer(ff_output)
-        out2 = self.norm2(out1 + ff_output)
-        return out2
+        # Stack features to form (N, num_modalities, embed_dim)
+        stacked_features = torch.stack(projected_features, dim=1) 
+        
+        # Apply Transformer Encoder
+        fused_output = self.transformer_encoder(stacked_features)
+        
+        # Aggregate across modalities (e.g., mean)
+        # This reduces (N, num_modalities, embed_dim) to (N, embed_dim)
+        return torch.mean(fused_output, dim=1)
 
 class DualStreamPPI(torch.nn.Module):
     """Dual-stream model for PPI prediction."""
-    def __init__(self, 
-                 in_channels,
-                 pe_dim, out_channels,
-                 modal2_in_channels: int = None, modal3_in_channels: int = None,
-                 modal2_pe_dim: int = None, modal3_pe_dim: int = None
-                 ):
+    def __init__(self, modal_cfg: list, out_channels: int):
         super().__init__()
 
-        # Feature Stream (Modal 1) - Semantic Part
-        self.feature_semantic_stream = GNNEncoder(
-            in_channels=in_channels,
+        # Collect input dimensions for EarlyFusionTransformer
+        x_input_dims = [entry.get('in_channels', 0) for entry in modal_cfg]
+        pe_input_dims = [entry.get('pe_dim', config.PE_DIM) for entry in modal_cfg]
+        # Assuming fourier_dim is same as pe_dim if not specified
+        fourier_input_dims = [entry.get('fourier_dim', config.PE_DIM) for entry in modal_cfg]
+
+        # Early Fusion Transformers
+        # Use Dual_FUSE_DIM as embed_dim for early fusion outputs
+        self.fusion_x = FuseBlock(
+            input_dims=x_input_dims,
+            embed_dim=config.Dual_FUSE_DIM,
+            num_heads=config.HEADS,
+            num_layers=1, # One layer for simplicity, can be configured
+            dropout=config.DROPOUT
+        )
+        self.fusion_pe = FuseBlock(
+            input_dims=pe_input_dims,
+            embed_dim=config.Dual_FUSE_DIM,
+            num_heads=config.HEADS,
+            num_layers=1, # One layer for simplicity
+            dropout=config.DROPOUT
+        )
+        self.fusion_fourier = FuseBlock(
+            input_dims=fourier_input_dims,
+            embed_dim=config.Dual_FUSE_DIM,
+            num_heads=config.HEADS,
+            num_layers=1, # One layer for simplicity
+            dropout=config.DROPOUT
+        )
+
+        # Single Semantic Stream
+        self.semantic_stream = GNNEncoder(
+            in_channels=config.Dual_FUSE_DIM, # Input from fused x
             hid_dim=config.FEAT_GNN_HID_DIM,
             edge_dim=config.EDGE_DIM,
             heads=config.HEADS,
             dropout=config.DROPOUT
         )
-        # Feature Stream (Modal 1) - Geometric Part
-        self.feature_geometric_stream = GNNEncoder(
-            in_channels=pe_dim,
+        # Single Geometric Stream
+        self.geometric_stream = GNNEncoder(
+            in_channels=config.Dual_FUSE_DIM, # Input from fused pe
             hid_dim=config.GEO_GNN_HID_DIM,
             edge_dim=config.EDGE_DIM,
             heads=config.HEADS,
             dropout=config.DROPOUT
         )
-        # Feature Stream (Modal 1) - Intra-modal Fusion
-        self.feature_intra_fusion = IntraModalFusion(
-            semantic_dim=self.feature_semantic_stream.out_dim,
-            geometric_dim=self.feature_geometric_stream.out_dim,
+        # Single Intra-modal Fusion
+        self.intra_fusion = IntraModalFusion(
+            semantic_dim=self.semantic_stream.out_dim,
+            geometric_dim=self.geometric_stream.out_dim,
             output_dim=config.Dual_FUSE_DIM
         )
 
-        # Modal 2 Stream
-        self.modal2_semantic_stream = None
-        self.modal2_geometric_stream = None
-        self.modal2_intra_fusion = None
-        if modal2_in_channels is not None and modal2_pe_dim is not None:
-            self.modal2_semantic_stream = GNNEncoder(
-                in_channels=modal2_in_channels,
-                hid_dim=config.FEAT_GNN_HID_DIM,
-                edge_dim=config.EDGE_DIM,
-                heads=config.HEADS,
-                dropout=config.DROPOUT
-            )
-            self.modal2_geometric_stream = GNNEncoder(
-                in_channels=modal2_pe_dim,
-                hid_dim=config.GEO_GNN_HID_DIM,
-                edge_dim=config.EDGE_DIM,
-                heads=config.HEADS,
-                dropout=config.DROPOUT
-            )
-            self.modal2_intra_fusion = IntraModalFusion(
-                semantic_dim=self.modal2_semantic_stream.out_dim,
-                geometric_dim=self.modal2_geometric_stream.out_dim,
-                output_dim=config.Dual_FUSE_DIM
-            )
-
-        # Modal 3 Stream
-        self.modal3_semantic_stream = None
-        self.modal3_geometric_stream = None
-        self.modal3_intra_fusion = None
-        if modal3_in_channels is not None and modal3_pe_dim is not None:
-            self.modal3_semantic_stream = GNNEncoder(
-                in_channels=modal3_in_channels,
-                hid_dim=config.FEAT_GNN_HID_DIM,
-                edge_dim=config.EDGE_DIM,
-                heads=config.HEADS,
-                dropout=config.DROPOUT
-            )
-            self.modal3_geometric_stream = GNNEncoder(
-                in_channels=modal3_pe_dim,
-                hid_dim=config.GEO_GNN_HID_DIM,
-                edge_dim=config.EDGE_DIM,
-                heads=config.HEADS,
-                dropout=config.DROPOUT
-            )
-            self.modal3_intra_fusion = IntraModalFusion(
-                semantic_dim=self.modal3_semantic_stream.out_dim,
-                geometric_dim=self.modal3_geometric_stream.out_dim,
-                output_dim=config.Dual_FUSE_DIM
-            )
-
-        self.cross_fuse = CrossModalAttention(
-            embed_dim=config.Dual_FUSE_DIM,
-            num_heads=config.HEADS,
-            dropout=config.DROPOUT
-        )
-        self.fusion_output_dim = config.Dual_FUSE_DIM
+        self.fusion_output_dim = self.intra_fusion.out_dim
 
         self.classifier = Sequential(
             Linear(self.fusion_output_dim, self.fusion_output_dim // 2),
@@ -143,41 +126,47 @@ class DualStreamPPI(torch.nn.Module):
 
     def forward(self, data):
         fused_embeds = self.feat(data)
-        prediction = self.MLP(fused_embeds)
-        return prediction
-
-    def feat(self, data):
-        # Process Feature Stream (Modal 1)
-        feature_semantic_embeds = self.feature_semantic_stream(data.seq_x, data.seq_adj_t)
-        feature_geometric_embeds = self.feature_geometric_stream(data.r_pe, data.r_fourier)
-        feature_fused_embeds = self.feature_intra_fusion(feature_semantic_embeds, feature_geometric_embeds)
-
-        all_fused_modal_embeds = [feature_fused_embeds]
-
-        # Process Modal 2 Stream
-        if self.modal2_semantic_stream and hasattr(data, 'modal2_x') and hasattr(data, 'modal2_adj_t') and hasattr(data, 'modal2_r_pe') and hasattr(data, 'modal2_r_fourier'):
-            modal2_semantic_embeds = self.modal2_semantic_stream(data.modal2_x, data.modal2_adj_t)
-            modal2_geometric_embeds = self.modal2_geometric_stream(data.modal2_r_pe, data.modal2_r_fourier)
-            modal2_fused_embeds = self.modal2_intra_fusion(modal2_semantic_embeds, modal2_geometric_embeds)
-            all_fused_modal_embeds.append(modal2_fused_embeds)
-
-        # Process Modal 3 Stream
-        if self.modal3_semantic_stream and hasattr(data, 'modal3_x') and hasattr(data, 'modal3_adj_t') and hasattr(data, 'modal3_r_pe') and hasattr(data, 'modal3_r_fourier'):
-            modal3_semantic_embeds = self.modal3_semantic_stream(data.modal3_x, data.modal3_adj_t)
-            modal3_geometric_embeds = self.modal3_geometric_stream(data.modal3_r_pe, data.modal3_r_fourier)
-            modal3_fused_embeds = self.modal3_intra_fusion(modal3_semantic_embeds, modal3_geometric_embeds)
-            all_fused_modal_embeds.append(modal3_fused_embeds)
-
-        stacked_modal_embeds = torch.stack(all_fused_modal_embeds, dim=1)
-
-        cross_attn_output = self.cross_fuse(stacked_modal_embeds, stacked_modal_embeds)
-
-        fused_embeds = torch.mean(cross_attn_output, dim=1)
-
-        return fused_embeds
-
-    def MLP(self, embedding):
-        prediction = self.classifier(embedding)
+        prediction = self.classifier(fused_embeds) # Corrected from self.MLP(fused_embeds)
         if prediction.shape[-1] == 1:
             return prediction.squeeze(-1)
         return prediction
+
+    def feat(self, data):
+        # Collect features for each type across all modalities
+        all_modal_x_features = []
+        all_modal_pe_features = []
+        all_modal_fourier_features = []
+        adj_t_data = None
+
+        # Iterate through modal_cfg to get modal names and extract features from data object
+        for cfg_entry in self.modal_cfg:
+            modal_name = cfg_entry['name']
+
+            current_x = getattr(data, f'{modal_name}_x', None)
+            current_pe = getattr(data, f'{modal_name}_pe', None)
+            current_fourier = getattr(data, f'{modal_name}_fourier', None)
+            current_adj_t = getattr(data, f'{modal_name}_adj_t', None)
+
+            if current_x is not None: all_modal_x_features.append(current_x)
+            if current_pe is not None: all_modal_pe_features.append(current_pe)
+            if current_fourier is not None: all_modal_fourier_features.append(current_fourier)
+            
+            # Assuming adj_t is the same across all modalities, take from the first one
+            if adj_t_data is None and current_adj_t is not None:
+                adj_t_data = current_adj_t
+
+        # Apply Early Fusion Transformers
+        fused_x_embeds = self.fusion_x(all_modal_x_features)
+        fused_pe_embeds = self.fusion_pe(all_modal_pe_features)
+        fused_fourier_embeds = self.fusion_fourier(all_modal_fourier_features)
+
+        # Process Semantic Stream
+        semantic_embeds = self.semantic_stream(fused_x_embeds, adj_t_data)
+        
+        # Process Geometric Stream
+        geometric_embeds = self.geometric_stream(fused_pe_embeds, fused_fourier_embeds)
+
+        # Intra-modal Fusion
+        fused_embeds = self.intra_fusion(semantic_embeds, geometric_embeds)
+
+        return fused_embeds

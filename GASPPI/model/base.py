@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 from torch.nn import ModuleList, LayerNorm, Linear
 from torch_geometric.utils import dense_to_sparse
-from torch_geometric.nn import JumpingKnowledge, AntiSymmetricConv, GeneralConv
+from torch_geometric.nn import AntiSymmetricConv, GeneralConv
 from torch import Tensor
 from typing import Optional
 
@@ -33,8 +33,7 @@ class GNNEncoder(torch.nn.Module):
             self.convs.append(conv1)
             self.norms.append(LayerNorm(self.hid_dim))
 
-        self.jk = JumpingKnowledge(mode=config.JK_MODE)
-        self.out_dim: int = hid_dim * config.NUM_LAYER
+        self.out_dim: int = hid_dim
 
     def forward(self, x: Tensor, adj_t: SparseTensor) -> Tensor:
         if self.in_proj is not None:
@@ -73,7 +72,5 @@ class GNNEncoder(torch.nn.Module):
             x = F.relu(x)
             x = norm(x)
             x = F.dropout(x, p=self.dropout, training=self.training)
-            xs.append(x)
 
-        out = self.jk(xs)
-        return out
+        return x
