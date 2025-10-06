@@ -76,7 +76,6 @@ def main():
                 'pe_dim': modal_dims_info.get(f'{modal_name}_pe_dim', config.PE_DIM),
             }
             modal_cfg.append(cfg_entry)
-
     seed = config.SEED
     torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)

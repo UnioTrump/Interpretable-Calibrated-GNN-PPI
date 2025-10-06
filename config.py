@@ -23,20 +23,20 @@ CONV_L2_NORM = True
 NUM_LAYER = 4
 Dual_FUSE_DIM = 128
 OUT_CHANNELS = 1
-HEADS = 4      # from 3 to 2 time:2025-9-23 22:18
+HEADS = 8      # from 3 to 2 time:2025-9-23 22:18
 DROPOUT = 0.2
 
 EPOCHS = 60
 BATCH_SIZE = 16
-LEARNING_RATE = 4e-4    # from 4e-4 to 1e-3time: 2025-9-23 22:26
+LEARNING_RATE = 5e-4    # from 4e-4 to 1e-3time: 2025-9-23 22:26
 WEIGHT_DECAY = 4e-4
-POS_WEIGHT = 0.05       # Change from 1 to 0.5 time 2025-9-23 12:41
+POS_WEIGHT = 0.1       # Change from 1 to 0.5 time 2025-9-23 12:41
 GRAD_NORM = 0.5
 PATIENCE = 15
 
-ALPHA = 0.15
+ALPHA = 0.3
 BETA=0.97
-B_WEIGHT = 0.5
+B_WEIGHT = 0.6
 T_WEIGHT = 0.7
 
 PRE_MODEL = '/../gz-data/TRAINING_OUTPUT/Saved_model'
