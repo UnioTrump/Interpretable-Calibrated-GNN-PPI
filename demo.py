@@ -11,9 +11,9 @@ from data_utils import DataLoader
 device = config.DEVICE
 print(torch.cuda.get_device_name(0))
 
-def train(model, train_proteins, optimizer, data_loader):
+def train(model, train_data, optimizer, data_loader):
     model.train()
-    np.random.shuffle(train_proteins)
+    np.random.shuffle(train_data)
 
     total_loss = 0
     criterion = HybridLoss(
@@ -25,17 +25,17 @@ def train(model, train_proteins, optimizer, data_loader):
         tversky_weight=config.T_WEIGHT
     )
 
-    for i in range(0, len(train_proteins), config.BATCH_SIZE):
-        batch_proteins = train_proteins[i:i + config.BATCH_SIZE]
+    for i in range(0, len(train_data), config.BATCH_SIZE):
+        batch_samples = train_data[i:i + config.BATCH_SIZE]
         optimizer.zero_grad()
 
         batch_loss_sum = 0
-        for protein_idx in batch_proteins:
-            data = data_loader.prepare_sample(protein_idx)
+        for sample_data in batch_samples:
+            data = data_loader.prepare_sample(sample_data)
             out = model(data)
             loss = criterion.compute_loss(out, data.y)
             batch_loss_sum += loss.item()
-            loss = loss / len(batch_proteins)
+            loss = loss / len(batch_samples)
             loss.backward()
 
         if config.GRAD_NORM is not None:
@@ -44,10 +44,10 @@ def train(model, train_proteins, optimizer, data_loader):
 
         total_loss += batch_loss_sum
 
-    return total_loss / len(train_proteins)
+    return total_loss / len(train_data)
 
 @torch.no_grad()
-def test(model, val_proteins, data_loader):
+def test(model, val_data, data_loader):
     model.eval()
     criterion = HybridLoss(
         pos_wt=torch.tensor(config.POS_WEIGHT, device=device),
@@ -60,15 +60,15 @@ def test(model, val_proteins, data_loader):
     total_loss = 0
     all_probs, all_targets = [], []
 
-    for val_p_idx in val_proteins:
-        data = data_loader.prepare_sample(val_p_idx)
+    for sample_data in val_data:
+        data = data_loader.prepare_sample(sample_data)
         out = model(data)
         loss = criterion.compute_loss(out, data.y)
         total_loss += loss.item()
         all_probs.append(torch.sigmoid(out))
         all_targets.append(data.y.float())
 
-    avg_loss = total_loss / len(val_proteins)
+    avg_loss = total_loss / len(val_data)
     all_targets_tensor = torch.cat(all_targets, dim=0)
     all_probs_tensor = torch.cat(all_probs, dim=0)
 
@@ -80,35 +80,17 @@ def test(model, val_proteins, data_loader):
 def main():
 
     data_loader = DataLoader(
-        device=device,
-        multimodal_data_dir=config.MULTIMODAL_DATA_DIR
+        device=device
     )
-    all_proteins = DataLoader.load_data(data_loader)
+    all_proteins = DataLoader.load_data(config.DATA_DIR)
     train_data, val_data = DataLoader.split_data(all_proteins, train_ratio=0.8, seed=42)
-    dat_info_sample = data_loader.prepare_sample(all_proteins[0])
-
-    modal_dims_info = DataLoader.dat_ifo(dat_info_sample)
-    
-    modal_cfg = []
-    if hasattr(dat_info_sample, 'modal_names_list'):
-        for modal_name in dat_info_sample.modal_names_list:
-            cfg_entry = {
-                'name': modal_name,
-                'in_channels': modal_dims_info.get(f'{modal_name}_in_channels', 0),
-                'pe_dim': modal_dims_info.get(f'{modal_name}_pe_dim', config.PE_DIM),
-            }
-            modal_cfg.append(cfg_entry)
 
     seed = config.SEED
     torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
 
-    model_class = DualStreamPPI
-    model = model_class(
-        modal_cfg=modal_cfg,
-        out_channels=config.OUT_CHANNELS
-    ).to(device)
+    model = DualStreamPPI().to(device)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=config.LEARNING_RATE, weight_decay=config.WEIGHT_DECAY)
     warmup_epochs = 5
@@ -163,8 +145,6 @@ def main():
         })
     save_path=os.path.join(config.PLOT_DIR, f'Train.png')
     plot_loss_curves(train_losses, val_losses, save_path)
-
-
 
 if __name__ == '__main__':
     main()

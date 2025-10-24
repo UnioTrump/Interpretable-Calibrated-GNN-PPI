@@ -8,6 +8,7 @@ class WeightedCrossEntropy(object):
         self.pos_weight = pos_wt.to(self.device) if torch.is_tensor(pos_wt) else torch.tensor(pos_wt, device=self.device)
 
     def compute_loss(self, pred, true):
+        # true=torch.LongTensor(true)
         true = true.float().to(self.device)
         
         loss = F.binary_cross_entropy_with_logits(
@@ -26,6 +27,7 @@ class TverskyLoss(object):
         self.smooth = smooth
 
     def compute_loss(self, pred, true):
+        # true = torch.LongTensor(true)
         true = true.float().to(self.device)
         pred = torch.sigmoid(pred).squeeze()
 

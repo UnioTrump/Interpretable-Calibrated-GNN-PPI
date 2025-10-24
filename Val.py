@@ -17,8 +17,8 @@ def A(model, val_proteins, data_loader,Dset_name, visualize=True, ):
     all_prob, all_target = [], []
     extracted_features, labels = [], []
 
-    for p in tqdm(val_proteins, desc='Testing'):
-        data = data_loader.prepare_sample(p)
+    for sample_data in tqdm(val_proteins, desc='Testing'):
+        data = data_loader.prepare_sample(sample_data)
 
         with torch.no_grad():
             combined_features = model.feat(data)
@@ -61,31 +61,15 @@ def main():
     parse.add_argument('--data', required=True, type=str)
     parse.add_argument('--Dset_name', required=True, type=str)
     args = parse.parse_args()
-    data_loader = DataLoader(device=device, multimodal_data_dir=eval(args.data))
-    all_proteins = DataLoader.load_data(data_loader)
-    dat_info_sample = data_loader.prepare_sample(all_proteins[0])
-    
-    modal_dims_info = DataLoader.dat_ifo(dat_info_sample)
-    
-    modal_cfg = []
-    if hasattr(dat_info_sample, 'modal_names_list'):
-        for modal_name in dat_info_sample.modal_names_list:
-            cfg_entry = {
-                'name': modal_name,
-                'in_channels': modal_dims_info.get(f'{modal_name}_in_channels', 0),
-                'pe_dim': modal_dims_info.get(f'{modal_name}_pe_dim', config.PE_DIM),
-            }
-            modal_cfg.append(cfg_entry)
+    data_loader = DataLoader(device=device)
+    all_proteins = DataLoader.load_data(eval(args.data))
+
     seed = config.SEED
     torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
 
-    model_class = DualStreamPPI
-    model = model_class(
-        modal_cfg=modal_cfg,
-        out_channels=config.OUT_CHANNELS
-    ).to(device)
+    model = DualStreamPPI().to(device)
 
     best_model_path = os.path.join(config.PRE_MODEL, f'Train.pth')
     model.load_state_dict(torch.load(best_model_path, map_location=device))

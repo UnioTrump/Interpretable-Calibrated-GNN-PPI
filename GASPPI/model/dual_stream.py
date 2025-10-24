@@ -1,6 +1,6 @@
 import torch
 from torch import Tensor
-from torch.nn import Linear, ModuleList, Dropout, ReLU, Softmax, Module, Sequential
+from torch.nn import Linear, Dropout, ReLU, Module, Sequential
 from .base import GNNEncoder
 import config
 
@@ -20,59 +20,19 @@ class IntraModalFusion(Module):
         fused_embeds = self.dropout_layer(fused_embeds)
         return fused_embeds
 
-class FuseBlock(Module):
-    def __init__(self, input_dims: list[int], embed_dim: int):
-        super().__init__()
-        self.embed_dim = embed_dim
-        
-        self.projection_layers = ModuleList([
-            Linear(input_dim, embed_dim) for input_dim in input_dims
-        ])
-        
-        self.gate_weight_layers = ModuleList([
-            Linear(embed_dim, 1) for _ in input_dims
-        ])
-        self.softmax = Softmax(dim=1)
-            
-    def forward(self, feat_l: list[Tensor]) -> Tensor:
-        projected_features = []
-        raw_gate_weights = []
-        for i, feature in enumerate(feat_l):
-            projected_features.append(self.projection_layers[i](feature))
-
-        for i, proj_feat in enumerate(projected_features):
-            raw_gate_weights.append(self.gate_weight_layers[i](proj_feat))
-
-        gate_weights = torch.stack(raw_gate_weights, dim=1)
-        normalized_weights = self.softmax(gate_weights)
-
-        fused_output = torch.zeros_like(projected_features[0])
-
-        for i, proj_feat in enumerate(projected_features):
-            fused_output += normalized_weights[:, i] * proj_feat
-
-        return fused_output
-
 class DualStreamPPI(Module):
-    def __init__(self, modal_cfg: list, out_channels: int):
+    def __init__(self):
         super().__init__()
-
-        self.modal_cfg = modal_cfg 
-        x_input_dims = [entry.get('in_channels', 0) for entry in modal_cfg]
-        pe_input_dims = [entry.get('pe_dim', config.PE_DIM) for entry in modal_cfg]
-        
-        self.fusion_x = FuseBlock(input_dims=x_input_dims, embed_dim=config.Dual_FUSE_DIM,)
-        self.fusion_pe = FuseBlock(input_dims=pe_input_dims, embed_dim=config.Dual_FUSE_DIM,)
 
         self.semantic_stream = GNNEncoder(
-            in_channels=config.Dual_FUSE_DIM, 
+            in_channels=1152, 
             hid_dim=config.FEAT_GNN_HID_DIM,
             edge_dim=config.EDGE_DIM,
             heads=config.HEADS,
             dropout=config.DROPOUT
         )
         self.geometric_stream = GNNEncoder(
-            in_channels=config.Dual_FUSE_DIM, 
+            in_channels=config.PE_DIM, 
             hid_dim=config.GEO_GNN_HID_DIM,
             edge_dim=config.EDGE_DIM, 
             heads=config.HEADS,
@@ -90,7 +50,7 @@ class DualStreamPPI(Module):
             Linear(self.fusion_output_dim, self.fusion_output_dim // 2),
             ReLU(),
             Dropout(p=config.DROPOUT),
-            Linear(self.fusion_output_dim // 2, out_channels)
+            Linear(self.fusion_output_dim // 2, config.OUT_CHANNELS)
         )
 
     def forward(self, data):
@@ -101,33 +61,13 @@ class DualStreamPPI(Module):
         return prediction
 
     def feat(self, data):
-        _x_features = []
-        _pe_features = []
-        _adj_t = None
-        _fourier = None
+        x = data.x
+        pe = data.pe
+        adj_t = data.adj_t
+        fourier = data.fourier
 
-        for cfg_entry in self.modal_cfg:
-            modal_name = cfg_entry['name']
-
-            x = getattr(data, f'{modal_name}_x', None)
-            pe = getattr(data, f'{modal_name}_pe', None)
-            fourier = getattr(data, f'{modal_name}_fourier', None)
-            adj_t = getattr(data, f'{modal_name}_adj_t', None)
-
-            if x is not None: _x_features.append(x)
-            if pe is not None: _pe_features.append(pe)
-            
-            if adj_t is not None:
-                _adj_t = adj_t
-            if fourier is not None:
-                _fourier = fourier
-
-        fused_x_embeds = self.fusion_x(_x_features)
-        fused_pe_embeds = self.fusion_pe(_pe_features)
-        
-        semantic_embeds = self.semantic_stream(fused_x_embeds, _adj_t)
-        
-        geometric_embeds = self.geometric_stream(fused_pe_embeds, _fourier)
+        semantic_embeds = self.semantic_stream(x, adj_t)
+        geometric_embeds = self.geometric_stream(pe, fourier)
 
         fused_embeds = self.intra_fusion(semantic_embeds, geometric_embeds)
 

@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 from torch.nn import ModuleList, LayerNorm, Linear
 from torch_geometric.utils import dense_to_sparse
-from torch_geometric.nn import AntiSymmetricConv, GeneralConv
+from torch_geometric.nn import AntiSymmetricConv, TransformerConv
 from torch import Tensor
 from typing import Optional
 
@@ -27,9 +27,9 @@ class GNNEncoder(torch.nn.Module):
         self.norms = ModuleList()
 
         for _ in range(config.NUM_LAYER):
-            phi = GeneralConv(in_channels=self.hid_dim, out_channels=self.hid_dim, in_edge_channels=config.EDGE_DIM,
-                              heads=heads, aggr=config.CONV_AGGR, directed_msg=config.CONV_DIRECTED, l2_normalize=config.CONV_L2_NORM)
-            conv1 = AntiSymmetricConv(self.hid_dim, phi=phi)
+            phi = TransformerConv(in_channels=in_channels, out_channels=hid_dim, head=heads, concat = True, beta = False,
+                                dropout = dropout, edge_dim=edge_dim)
+            conv1 = AntiSymmetricConv(self.hid_dim, phi=phi, act='ReLU')
             self.convs.append(conv1)
             self.norms.append(LayerNorm(self.hid_dim))
 
@@ -39,7 +39,6 @@ class GNNEncoder(torch.nn.Module):
         if self.in_proj is not None:
             x = self.in_proj(x)
 
-        xs = []
         for conv, norm in zip(self.convs, self.norms):
             # Convert adjacency format to edge_index format for TransformerConv
             if hasattr(adj_t, 'coo') and callable(getattr(adj_t, 'coo')):
@@ -50,6 +49,8 @@ class GNNEncoder(torch.nn.Module):
 
             elif isinstance(adj_t, torch.Tensor) and adj_t.dim() == 2 and adj_t.shape[1] == adj_t.shape[0]:
                 # Handle dense adjacency matrix (square matrix)
+                if adj_t.is_sparse:
+                    adj_t = adj_t.to_dense()
                 edge_index, edge_attr = dense_to_sparse(adj_t)
                 edge_index = edge_index.long()
                 if edge_attr.dim() == 1:
