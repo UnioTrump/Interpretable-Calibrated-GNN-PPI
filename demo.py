@@ -4,10 +4,9 @@ import os
 import numpy as np
 from torch.optim.lr_scheduler import ReduceLROnPlateau, LambdaLR
 from utils import calculate_metrics, find_best_threshold_by_f_beta, plot_loss_curves, HybridLoss
-from GASPPI import DualStreamPPI
+from model import PPI
 import config
-from data_utils import DataLoader
-
+from Data import Dataloader
 device = config.DEVICE
 print(torch.cuda.get_device_name(0))
 
@@ -18,8 +17,8 @@ def train(model, train_data, optimizer, data_loader):
     total_loss = 0
     criterion = HybridLoss(
         pos_wt=torch.tensor(config.POS_WEIGHT, device=device),
-        alpha=config.ALPHA,
-        beta=config.BETA,
+        alpha=config.A,
+        beta=config.B,
         device=device,
         ce_weight=config.B_WEIGHT,
         tversky_weight=config.T_WEIGHT
@@ -32,7 +31,7 @@ def train(model, train_data, optimizer, data_loader):
         batch_loss_sum = 0
         for sample_data in batch_samples:
             data = data_loader.prepare_sample(sample_data)
-            out = model(data)
+            out = model(ax=data.b_a, bx=data.prot, cx=data.esm, adj=data.adj)
             loss = criterion.compute_loss(out, data.y)
             batch_loss_sum += loss.item()
             loss = loss / len(batch_samples)
@@ -51,8 +50,8 @@ def test(model, val_data, data_loader):
     model.eval()
     criterion = HybridLoss(
         pos_wt=torch.tensor(config.POS_WEIGHT, device=device),
-        alpha=config.ALPHA,
-        beta=config.BETA,
+        alpha=config.A,
+        beta=config.B,
         device=device,
         ce_weight=config.B_WEIGHT,
         tversky_weight=config.T_WEIGHT
@@ -62,7 +61,7 @@ def test(model, val_data, data_loader):
 
     for sample_data in val_data:
         data = data_loader.prepare_sample(sample_data)
-        out = model(data)
+        out = model(ax=data.b_a, bx=data.prot, cx=data.esm, adj=data.adj)
         loss = criterion.compute_loss(out, data.y)
         total_loss += loss.item()
         all_probs.append(torch.sigmoid(out))
@@ -79,18 +78,17 @@ def test(model, val_data, data_loader):
 
 def main():
 
-    data_loader = DataLoader(
-        device=device
-    )
-    all_proteins = DataLoader.load_data(config.DATA_DIR)
-    train_data, val_data = DataLoader.split_data(all_proteins, train_ratio=0.8, seed=42)
+    data_loader = Dataloader()
+    all_proteins = Dataloader.load_data(config.DATA_DIR)
+    train_data, val_data = Dataloader.split_data(all_proteins, train_ratio=0.8, seed=42)
 
     seed = config.SEED
     torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
 
-    model = DualStreamPPI().to(device)
+    model = PPI(in_channels=512, hid_dim=512, dropout=config.DROPOUT, lamda=config.LAMDA, alpha=config.ALPHA, training=True)
+    model.to(device)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=config.LEARNING_RATE, weight_decay=config.WEIGHT_DECAY)
     warmup_epochs = 5

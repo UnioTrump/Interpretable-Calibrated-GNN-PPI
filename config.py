@@ -1,38 +1,33 @@
 import torch
 
 DEVICE = torch.device('cuda:0')
-SEED = 649737
+SEED = 2025
 # There are 306228 binding stes and 1649339 non-binding sites
-DATA_DIR = r'/../gz-data/Train/'
+DATA_DIR = ['/../gz-data/preTrain/Trainset7596_ESMC.pkl', '/../gz-data/preTrain/Trainset7596_ProtT5.pkl', '/../gz-data/preTrain/Trainset7596.pkl', '/../gz-data/preTrain/Trainset7596_attn.pkl', '/../gz-data/preTrain/Trainset7596_label.pkl']
+# DATA_DIR = ['/../gz-data/Train/Train362_ESMC.pkl', '/../gz-data/Train/Train362_ProtT5.pkl', '/../gz-data/Train/Train362_ab.pkl', '/../gz-data/Train/Train362_attn.pkl', '/../gz-data/Train/Train362_label.pkl']
 # There are 10904 binding stes and 54932 non-binding sites
-TUNING_DATA_PATH = r'/../gz-data/Tune'
+# TUNING_DATA_PATH = r'/../gz-data/Tune'
 # There are 1962 binding stes and 10098 non-binding sites
-VAL_DATA_PATH = r'/../gz-data/Test'
+VAL_DATA_PATH = ['/../gz-data/Test/Test60_ESMC.pkl', '/../gz-data/Test/Test60_Prot.pkl', '/../gz-data/Test/Test60_ab.pkl', '/../gz-data/Test/Test60_attn.pkl', '/../gz-data/Test/Test60_label.pkl']
 
-PE_DIM = 32
-
-FEAT_GNN_HID_DIM = 256
-GEO_GNN_HID_DIM = 64
-EDGE_DIM = 1
-
-NUM_LAYER = 4
-Dual_FUSE_DIM = 128
-OUT_CHANNELS = 1
-HEADS = 4      # from 3 to 2 time:2025-9-23 22:18
-DROPOUT = 0.2
+NUM_LAYER = 5
+DROPOUT = 0.1
 
 EPOCHS = 60
 BATCH_SIZE = 32
-LEARNING_RATE = 4e-3    # from 4e-4 to 1e-3time: 2025-9-23 22:26
+LEARNING_RATE = 4e-3
 WEIGHT_DECAY = 4e-4
-POS_WEIGHT = 0.2       # Change from 1 to 0.5 time 2025-9-23 12:41
+POS_WEIGHT = 1
 GRAD_NORM = 0.5
 PATIENCE = 15
 
-ALPHA = 0.3
-BETA=0.97
-B_WEIGHT = 0.36
-T_WEIGHT = 0.97
+ALPHA = 0.7
+LAMDA = 1.5
+
+A = 0.3     #wight of FN
+B=0.97      #weght of FP
+B_WEIGHT = 0.36     # weight of BCELoss
+T_WEIGHT = 0.97     # weight of Tversky loss
 
 PRE_MODEL = '/../gz-data/TRAINING_OUTPUT/Saved_model'
 TUNING_MODEL = '/../gz-data/TRAINING_OUTPUT/Tuning_model'

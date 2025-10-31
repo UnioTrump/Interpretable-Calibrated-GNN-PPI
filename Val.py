@@ -3,17 +3,17 @@ import os
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 from utils import calculate_metrics, find_best_threshold_by_f_beta, save_metrics_to_txt
-from GASPPI import DualStreamPPI
+from model import PPI
 import config
 from tqdm import tqdm
-from data_utils import DataLoader
+from Data import Dataloader
 import numpy as np
 import argparse
 
 device = config.DEVICE
 
 @torch.no_grad()
-def A(model, val_proteins, data_loader,Dset_name, visualize=True, ):
+def A(model, val_proteins, data_loader,Dset_name, visualize=True):
     all_prob, all_target = [], []
     extracted_features, labels = [], []
 
@@ -61,15 +61,15 @@ def main():
     parse.add_argument('--data', required=True, type=str)
     parse.add_argument('--Dset_name', required=True, type=str)
     args = parse.parse_args()
-    data_loader = DataLoader(device=device)
-    all_proteins = DataLoader.load_data(eval(args.data))
+    data_loader = Dataloader()
+    all_proteins = Dataloader.load_data(eval(args.data))
 
     seed = config.SEED
     torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
 
-    model = DualStreamPPI().to(device)
+    model = PPI(in_channels=512, hid_dim=512, dropout=config.DROPOUT, lamda=config.LAMDA, alpha=config.ALPHA, training=True).to(device)
 
     best_model_path = os.path.join(config.PRE_MODEL, f'Train.pth')
     model.load_state_dict(torch.load(best_model_path, map_location=device))
