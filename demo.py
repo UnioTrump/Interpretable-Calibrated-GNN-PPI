@@ -2,13 +2,15 @@ from tqdm import tqdm
 import torch
 import os
 import numpy as np
-from torch.optim.lr_scheduler import ReduceLROnPlateau, LambdaLR
+from torch.optim.lr_scheduler import LambdaLR, CosineAnnealingLR
 from utils import calculate_metrics, find_best_threshold_by_f_beta, plot_loss_curves, HybridLoss
 from model import PPI
 import config
 from Data import Dataloader
+
 device = config.DEVICE
 print(torch.cuda.get_device_name(0))
+
 
 def train(model, train_data, optimizer, data_loader):
     model.train()
@@ -16,11 +18,10 @@ def train(model, train_data, optimizer, data_loader):
 
     total_loss = 0
     criterion = HybridLoss(
-        pos_wt=torch.tensor(config.POS_WEIGHT, device=device),
         alpha=config.A,
         beta=config.B,
         device=device,
-        ce_weight=config.B_WEIGHT,
+        focal_weight=config.F_WEIGHT,
         tversky_weight=config.T_WEIGHT
     )
 
@@ -31,8 +32,8 @@ def train(model, train_data, optimizer, data_loader):
         batch_loss_sum = 0
         for sample_data in batch_samples:
             data = data_loader.prepare_sample(sample_data)
-            out = model(ax=data.b_a, bx=data.prot, cx=data.esm, adj=data.adj)
-            loss = criterion.compute_loss(out, data.y)
+            out = model(ax=data.aa, bx=data.esm, cx=data.prot, adj=data.adj)
+            loss = criterion.forward(out, data.y)
             batch_loss_sum += loss.item()
             loss = loss / len(batch_samples)
             loss.backward()
@@ -45,15 +46,15 @@ def train(model, train_data, optimizer, data_loader):
 
     return total_loss / len(train_data)
 
+
 @torch.no_grad()
 def test(model, val_data, data_loader):
     model.eval()
     criterion = HybridLoss(
-        pos_wt=torch.tensor(config.POS_WEIGHT, device=device),
         alpha=config.A,
         beta=config.B,
         device=device,
-        ce_weight=config.B_WEIGHT,
+        focal_weight=config.F_WEIGHT,
         tversky_weight=config.T_WEIGHT
     )
     total_loss = 0
@@ -61,8 +62,8 @@ def test(model, val_data, data_loader):
 
     for sample_data in val_data:
         data = data_loader.prepare_sample(sample_data)
-        out = model(ax=data.b_a, bx=data.prot, cx=data.esm, adj=data.adj)
-        loss = criterion.compute_loss(out, data.y)
+        out = model(ax=data.aa, bx=data.esm, cx=data.prot, adj=data.adj)
+        loss = criterion.forward(out, data.y)
         total_loss += loss.item()
         all_probs.append(torch.sigmoid(out))
         all_targets.append(data.y.float())
@@ -76,8 +77,8 @@ def test(model, val_data, data_loader):
 
     return avg_loss, metrics, threshold
 
-def main():
 
+def main():
     data_loader = Dataloader()
     all_proteins = Dataloader.load_data(config.DATA_DIR)
     train_data, val_data = Dataloader.split_data(all_proteins, train_ratio=0.8, seed=42)
@@ -87,7 +88,7 @@ def main():
     np.random.seed(seed)
     torch.manual_seed(seed)
 
-    model = PPI(in_channels=512, hid_dim=512, dropout=config.DROPOUT, lamda=config.LAMDA, alpha=config.ALPHA, training=True)
+    model = PPI(hid_dim=config.gcn_hid_dim, heads=config.HEADS, dropout=config.DROPOUT, bi=config.bi)
     model.to(device)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=config.LEARNING_RATE, weight_decay=config.WEIGHT_DECAY)
@@ -99,11 +100,10 @@ def main():
         return 1.0
 
     warmup_scheduler = LambdaLR(optimizer, lr_lambda)
-    reduce_lr_scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5, min_lr=config.SCHEDULER_ETA_MIN)
+    # reduce_lr_scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5, min_lr=config.ETA_MIN)
+    reduce_lr_scheduler = CosineAnnealingLR(optimizer, T_max=config.T_MAX, eta_min=config.ETA_MIN)
 
     os.makedirs(config.PRE_MODEL, exist_ok=True)
-
-    print("Starting training...")
 
     train_losses, val_losses = [], []
     best_loss = float('inf')
@@ -118,10 +118,11 @@ def main():
         val_loss, metrics, best_threshold = test(model, val_data, data_loader)
         val_losses.append(val_loss)
 
-        if epoch < warmup_epochs:
-            warmup_scheduler.step()
-        else:
-            reduce_lr_scheduler.step(val_loss)
+        # if epoch < warmup_epochs:
+        #     warmup_scheduler.step()
+        # else:
+        # reduce_lr_scheduler.step(val_loss)
+        reduce_lr_scheduler.step()
 
         if val_losses[-1] < best_loss:
             best_loss = val_losses[-1]
@@ -141,8 +142,9 @@ def main():
             "AUROC": f"{metrics['roc_auc']:.4f}",
             "Patience": f"{patience_counter}/{config.PATIENCE}"
         })
-    save_path=os.path.join(config.PLOT_DIR, f'Train.png')
+    save_path = os.path.join(config.PLOT_DIR, f'Train.png')
     plot_loss_curves(train_losses, val_losses, save_path)
+
 
 if __name__ == '__main__':
     main()

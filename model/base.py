@@ -1,104 +1,91 @@
 import torch
 import torch.nn.functional as F
 import torch.nn as nn
+from torch_geometric.nn import AntiSymmetricConv, TransformerConv
 from torch import Tensor
-import math
 from torch_sparse import SparseTensor
 import config
+
 device = config.DEVICE
-
-class PPIConv(nn.Module):
-    def __init__(self, in_channels: int, hid_channels: int):
-        super().__init__()
-        self.in_channels = in_channels
-        self.out_channels = hid_channels
-
-        self.weight = nn.Parameter(torch.FloatTensor(in_channels, hid_channels))
-        self.reset_parameters()
-
-    def reset_parameters(self):
-        stdv = 1. / math.sqrt(self.out_channels)
-        self.weight.data.uniform_(-stdv, stdv)
-
-    def forward(self, x, adj, H0, alpha, lamda, l):
-        beta = min(1.0, math.log(lamda / l + 1))
-        Hl = torch.spmm(adj, x)
-
-        r = (1 - alpha) * Hl + alpha * H0
-        r = (1 - beta) * r + beta * torch.mm(r, self.weight)
-        return r
-
-
-class GNNEncoder(nn.Module):
-    def __init__(self, in_channels: int, hid_dim: int, alpha, lamda, training, dropout: float):
-        super().__init__()
-
-        self.convs = nn.ModuleList()
-        self.lin = nn.ModuleList()
-        self.act = nn.ReLU()
-        self.dropout = dropout
-        self.alpha = alpha
-        self.lamda = lamda
-        self.training = training
-        for _ in range(config.NUM_LAYER):
-            phi = PPIConv(in_channels=hid_dim, hid_channels=hid_dim)
-            self.convs.append(phi)
-        self.lin = nn.Linear(in_channels, hid_dim)
-
-        self.out_dim: int = hid_dim
-
-    def forward(self, x: Tensor, adj: SparseTensor):
-        _layer = []
-        x = F.dropout(x, self.dropout, training=self.training)
-        _layer.append(self.act(self.lin(x)))
-        for i, conv in enumerate(self.convs):
-            x = F.dropout(x, self.dropout, training=self.training)
-            x = self.act(conv(x, adj, _layer[0], self.alpha, self.lamda, i + 1))
-        x = F.dropout(x, self.dropout, training=self.training)
-
-        return x
 
 
 class PPI(nn.Module):
     """
-    Args:
-        in_channels (int): input channels
-        hid_dim (int): hidden channels
-        dropout (float): dropout rate
-        lamda (float): cal weight of W(l)
-        alpha (float): weight of W(l)
+        Args:
+            hid_dim (int): Hidden dimension size.
+            heads (int, optional): Number of attention heads.
+            dropout (float, optional): Dropout probability.
     """
-    def __init__(self, in_channels: int, hid_dim: int,
-                 dropout: float, lamda: float, alpha: float, training=True):
-        super().__init__()
 
-        self.GCN = GNNEncoder(in_channels=512, hid_dim=hid_dim,
-                              alpha=alpha, lamda=lamda, dropout=dropout, training=training)
-        self.trf = nn.TransformerEncoderLayer(d_model=606, nhead=6)
-        self.classifier = nn.Sequential(
-            nn.Linear(hid_dim, hid_dim // 2),
-            nn.ReLU(),
-            nn.Dropout(p=dropout),
-            nn.Linear(hid_dim // 2, 1)
-        )
-        self.reduction = nn.Linear(2782, 512)
+    def __init__(self, hid_dim: int, heads: int, dropout: float, bi: bool):
+        super().__init__()
+        self.dropout = dropout
+        self.hid_dim = hid_dim
+        self.out_dim: int = hid_dim
+        self.bi = bi
+
+        self.convs = nn.ModuleList()
+        self.norms = nn.ModuleList()
+        self.trf = nn.GRU(input_size=567, hidden_size=config.gru_hid_dim, num_layers=1, bidirectional=bi)
+        input_size=config.gru_hid_dim*2+1024+1152
+        self.gru = nn.GRU(input_size=input_size, hidden_size=hid_dim, num_layers=1, bidirectional=bi)  # 512+1024+1152=2688
+        if bi:
+            for _ in range(config.NUM_LAYER):
+                phi = TransformerConv(in_channels=hid_dim*2, out_channels=hid_dim*2, heads=heads, concat=False, beta=False,
+                                      dropout=dropout, edge_dim=1)
+                conv1 = AntiSymmetricConv(in_channels=hid_dim*2, phi=phi, act='ReLU')
+                self.convs.append(conv1)
+                self.norms.append(nn.LayerNorm(self.hid_dim*2))
+            self.classifier = nn.Sequential(
+                nn.Linear(hid_dim*2, hid_dim // 2),
+                nn.ReLU(),
+                nn.Dropout(p=dropout),
+                nn.Linear(hid_dim // 2, 1)
+            )
+        else:
+            for _ in range(config.NUM_LAYER):
+                phi = TransformerConv(in_channels=hid_dim, out_channels=hid_dim, heads=heads, concat=False, beta=False,
+                                      dropout=dropout, edge_dim=1)
+                conv1 = AntiSymmetricConv(in_channels=hid_dim, phi=phi, act='ReLU')
+                self.convs.append(conv1)
+                self.norms.append(nn.LayerNorm(self.hid_dim))
+
+            self.classifier = nn.Sequential(
+                nn.Linear(hid_dim, hid_dim // 2),
+                nn.ReLU(),
+                nn.Dropout(p=dropout),
+                nn.Linear(hid_dim // 2, 1)
+            )
 
     def forward(self, ax: Tensor, bx: Tensor, cx: Tensor, adj: SparseTensor):
         """
-        ax: AAINDEX and BLOSUM62 martix:
-            shape:[N, 566+20]
-        bx: Obtained from ProtTrans:
-            shape:[N, 1280]
+        Parameters:
+
+            ax: Tensor
+                The AAINDEX features.
+            bx: Tensor
+                The ESM-C 600m features.
+            cx: Tensor
+                The ProtTrans features.
+            adj: SparseTensor
+                The adjacency matrix in COO format, representing the graph structure.
         """
         ax.to(device)
         bx.to(device)
         cx.to(device)
-        ax = ax.float()
-        bx = bx.float()
+        row, col, edge_attr = adj.coo()
+        edge_attr = edge_attr.view(-1, 1)
+        edge_index = torch.stack([row, col]).long()
 
-        w = self.trf(ax)
-        x = torch.cat([w, bx, cx], dim=1)   # [n_sample, 2762]
-        x = self.reduction(x)
-        out = self.GCN(x, adj)
+        w, _ = self.trf(ax)
+        x = torch.cat([w, bx, cx], dim=1)
+        x, _ = self.gru(x)
 
-        return self.classifier(out)
+
+        for conv, norm in zip(self.convs, self.norms):
+            x = conv(x, edge_index, edge_attr)
+            x = F.relu(x)
+            x = norm(x)
+            x = F.dropout(x, p=self.dropout, training=True)
+
+        return self.classifier(x)
