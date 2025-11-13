@@ -2,9 +2,9 @@ from tqdm import tqdm
 import torch
 import os
 import numpy as np
-from torch.optim.lr_scheduler import LambdaLR, CosineAnnealingLR
+from torch.optim.lr_scheduler import LambdaLR, ReduceLROnPlateau
 from utils import calculate_metrics, find_best_threshold_by_f_beta, plot_loss_curves, HybridLoss
-from model import PPI
+from model import PPI, SAM
 import config
 from Data import Dataloader
 
@@ -12,22 +12,15 @@ device = config.DEVICE
 print(torch.cuda.get_device_name(0))
 
 
-def train(model, train_data, optimizer, data_loader):
+def train(model, train_data, optimizer, data_loader, loss_fn):
     model.train()
     np.random.shuffle(train_data)
 
     total_loss = 0
-    criterion = HybridLoss(
-        alpha=config.A,
-        beta=config.B,
-        device=device,
-        focal_weight=config.F_WEIGHT,
-        tversky_weight=config.T_WEIGHT
-    )
+    criterion = loss_fn
 
     for i in range(0, len(train_data), config.BATCH_SIZE):
         batch_samples = train_data[i:i + config.BATCH_SIZE]
-        optimizer.zero_grad()
 
         batch_loss_sum = 0
         for sample_data in batch_samples:
@@ -36,11 +29,15 @@ def train(model, train_data, optimizer, data_loader):
             loss = criterion.forward(out, data.y)
             batch_loss_sum += loss.item()
             loss = loss / len(batch_samples)
-            loss.backward()
 
-        if config.GRAD_NORM is not None:
-            torch.nn.utils.clip_grad_norm_(model.parameters(), config.GRAD_NORM)
-        optimizer.step()
+            def closure():
+                l = criterion(model(ax=data.aa, bx=data.esm, cx=data.prot, adj=data.adj), data.y)
+                l.backward()
+                return l
+            optimizer.zero_grad()
+            loss.backward()
+            # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.15)
+            optimizer.step(closure)
 
         total_loss += batch_loss_sum
 
@@ -48,15 +45,9 @@ def train(model, train_data, optimizer, data_loader):
 
 
 @torch.no_grad()
-def test(model, val_data, data_loader):
+def test(model, val_data, data_loader, loss_fun):
     model.eval()
-    criterion = HybridLoss(
-        alpha=config.A,
-        beta=config.B,
-        device=device,
-        focal_weight=config.F_WEIGHT,
-        tversky_weight=config.T_WEIGHT
-    )
+    criterion = loss_fun
     total_loss = 0
     all_probs, all_targets = [], []
 
@@ -88,10 +79,12 @@ def main():
     np.random.seed(seed)
     torch.manual_seed(seed)
 
-    model = PPI(hid_dim=config.gcn_hid_dim, heads=config.HEADS, dropout=config.DROPOUT, bi=config.bi)
+    model = PPI(hid_dim=config.gcn_hid_dim, heads=config.HEADS, dropout=config.DROPOUT)
     model.to(device)
+    print(f'参数量：{sum(p.numel() for p in model.parameters())}')
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=config.LEARNING_RATE, weight_decay=config.WEIGHT_DECAY)
+    base_optimizer = torch.optim.Adam
+    optimizer = SAM(model.parameters(), base_optimizer=base_optimizer, lr=config.LEARNING_RATE, weight_decay=config.WEIGHT_DECAY)
     warmup_epochs = 5
 
     def lr_lambda(epoch):
@@ -100,32 +93,38 @@ def main():
         return 1.0
 
     warmup_scheduler = LambdaLR(optimizer, lr_lambda)
-    # reduce_lr_scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5, min_lr=config.ETA_MIN)
-    reduce_lr_scheduler = CosineAnnealingLR(optimizer, T_max=config.T_MAX, eta_min=config.ETA_MIN)
+    reduce_lr_scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=5)
+    # reduce_lr_scheduler = CosineAnnealingLR(optimizer, T_max=config.T_MAX, eta_min=config.ETA_MIN)
 
     os.makedirs(config.PRE_MODEL, exist_ok=True)
-
+    criterion = HybridLoss(
+        alpha=config.A,
+        beta=config.B,
+        pos_wt=torch.tensor(0.3),
+        bce_weight=config.BCE_WEIGHT,
+        focal_weight=config.FOCAL_WEIGHT,
+        tversky_weight=config.Tversky_WEIGHT
+    )
     train_losses, val_losses = [], []
-    best_loss = float('inf')
+    best_auprc = float('-inf')
     patience_counter = 0
 
     epoch_pbar = tqdm(range(config.EPOCHS), desc="Training Progress", ncols=180)
 
     for epoch in epoch_pbar:
-        train_loss = train(model, train_data, optimizer, data_loader)
+        train_loss = train(model, train_data, optimizer, data_loader, criterion)
         train_losses.append(train_loss)
 
-        val_loss, metrics, best_threshold = test(model, val_data, data_loader)
+        val_loss, metrics, best_threshold = test(model, val_data, data_loader, criterion)
         val_losses.append(val_loss)
 
-        # if epoch < warmup_epochs:
-        #     warmup_scheduler.step()
-        # else:
-        # reduce_lr_scheduler.step(val_loss)
-        reduce_lr_scheduler.step()
+        if epoch < warmup_epochs:
+            warmup_scheduler.step()
+        else:
+            reduce_lr_scheduler.step(metrics['pr_auc'])
 
-        if val_losses[-1] < best_loss:
-            best_loss = val_losses[-1]
+        if metrics['pr_auc'] > best_auprc:
+            best_auprc = metrics['pr_auc']
             patience_counter = 0
             torch.save(model.state_dict(), os.path.join(config.PRE_MODEL, f'Train.pth'))
         else:

@@ -12,13 +12,13 @@ import config
 
 class Dataloader:
     def __init__(self):
-        self.device = config.DEVICE
+        self.device = 'cpu'
 
     @staticmethod
     def load_data(file_path: list):
         """
         Note:
-            file_path is an ordered list: ESM-C, ProtT5, AA, adj, label
+            file_path is an ordered list: [ESM-C, ProtT5, AA, adj, label]
         """
         data_list = []
         result_data = []
@@ -52,12 +52,53 @@ class Dataloader:
 
         return train_data, val_data
 
-    def prepare_sample(self, data_sample):
-        data = Data(
-            esm=data_sample.get('esm_c', None),
-            prot=data_sample.get('prot', None),
-            aa=data_sample.get('AA', None),
-            adj=data_sample.get('adj', None),
-            y=data_sample.get('y', None),
-        )
-        return data.to(self.device)
+    def prepare_sample(self, data_sample, ratio=2):
+
+        pid = data_sample["pid"]
+        aa = data_sample["AA"]
+        esmc = data_sample["esm_c"]
+        prot = data_sample["prot"]
+        adj = data_sample["adj"]
+        labels = data_sample["y"]
+
+        labels_np = labels.cpu().numpy() if hasattr(labels, 'cpu') else labels
+        ppi_idx = np.where(labels_np == 1)[0]
+        non_ppi_idx = np.where(labels_np == 0)[0]
+        Nr_p, Nr_n = len(ppi_idx), len(non_ppi_idx)
+
+        M = int(np.ceil(Nr_n / (ratio * Nr_p)))
+        print(f'M: {M}\nPos: {Nr_p}\nNeg: {Nr_n}')
+        np.random.shuffle(non_ppi_idx)
+
+        subsets = []
+        for i in range(M):
+            start = i * int(ratio * Nr_p)
+            end = min((i + 1) * int(ratio * Nr_p), Nr_n)
+            non_ppi_part = non_ppi_idx[start:end]
+
+            subset_idx = np.concatenate([ppi_idx, non_ppi_part])
+            np.random.shuffle(subset_idx)
+
+            subsets.append(Data(
+                pid=pid,
+                esm=esmc[subset_idx],
+                prot=prot[subset_idx],
+                aa=aa[subset_idx],
+                adj=adj[subset_idx][:, subset_idx],
+                y=labels[subset_idx],
+            ).to(self.device))
+
+        return subsets
+
+if __name__ == '__main__':
+    dalo=Dataloader()
+    dl = dalo.load_data(config.VAL1)
+    for d in dl:
+        sub = dalo.prepare_sample(data_sample=d)
+        break
+
+    labels = sub[0].y
+    ppi_idx = np.where(labels == 1)[0]
+    non_ppi_idx = np.where(labels == 0)[0]
+    Nr_p, Nr_n = len(ppi_idx), len(non_ppi_idx)
+    print(f'Pos: {Nr_p}, Neg: {Nr_n}')
