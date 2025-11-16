@@ -1,7 +1,6 @@
 from .losses import HybridLoss
-from .metrics import calculate_metrics
+from .metrics import calculate_metrics, find_best_threshold_by_f_beta
 from .plot import plot_loss_curves
-from .find_best_thre import find_best_threshold_by_f_beta
 from .plot import save_metrics_to_txt
 
 __all__ = [

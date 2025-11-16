@@ -1,33 +1,33 @@
 import torch
 import torch.nn as nn
-from torch_geometric.nn import GPSConv, GINEConv, TransformerConv
+from torch_geometric.nn import GPSConv, TransformerConv
 from torch import Tensor
 from torch_sparse import SparseTensor
 import config
 device = config.DEVICE
 
+class Gated_Fuse(nn.Module):
+    def __init__(self, aa_d, esm_d, out_d):
+        super().__init__()
+        self.gate = nn.Sequential(
+            nn.Linear(aa_d + esm_d, out_d),
+            nn.Sigmoid()
+        )
+        self.proj = nn.Linear(aa_d + esm_d, out_d)
+
+    def forward(self, aa, esm):
+        x = torch.cat([aa, esm], dim=-1)
+        g = self.gate(x)
+        return g * self.proj(x)
+
 class PPIBlock(nn.Module):
 
     def __init__(self, channels, heads, dropout, edge_dim=1):
         super().__init__()
-        '''
-        nn1 = nn.Sequential(
-            nn.Linear(channels, channels),
-            nn.Dropout(p=0.2),
-            nn.LayerNorm(channels)
-        )
-        
-        self.conv = GPSConv(
-            channels=channels,
-            conv=GINEConv(nn=nn1, train_eps=True, edge_dim=1),
-            heads=heads,
-            dropout=dropout,
-            act='GELU'
-        )
-        '''
+
         self.conv1 = GPSConv(
             channels=channels,
-            conv=TransformerConv(in_channels=channels, out_channels=channels, heads=4, dropout=dropout, edge_dim=1, concat=False),
+            conv=TransformerConv(in_channels=channels, out_channels=channels, heads=heads, dropout=dropout, edge_dim=1, concat=False),
             heads=heads,
             dropout=dropout,
             act='GELU'
@@ -47,28 +47,31 @@ class PPI(nn.Module):
         super().__init__()
         aa_d=567
         esm_d=1152
-        prot_d=1024
-        self.f_d = aa_d+esm_d+prot_d
+        # prot_d=1024
+        self.f_d = aa_d+esm_d
         self.dropout = dropout
         self.hid_dim = hid_dim
-        self.node_norm = nn.LayerNorm(self.f_d)
+        self.node_norm = nn.LayerNorm(self.hid_dim)
         self.edge_norm = nn.LayerNorm(1)
 
-        self.reduction = nn.Linear(self.f_d, hid_dim)
-        self.trf = nn.TransformerEncoderLayer(d_model=aa_d, nhead=3, dropout=dropout)
+        # self.reduction = nn.Linear(self.f_d, hid_dim)
+        self.gated=Gated_Fuse(aa_d, esm_d, out_d=hid_dim)
+        self.aa_encoder = nn.Sequential(
+            nn.Linear(aa_d, aa_d),
+            nn.LayerNorm(aa_d),
+            nn.GELU(),
+            nn.Dropout(dropout)
+        )
+        # self.trf = nn.TransformerEncoderLayer(d_model=aa_d, nhead=3, dropout=dropout)
         self.convs = nn.ModuleList()
         for i in range(config.NUM_LAYER):
             self.convs.append(PPIBlock(channels=hid_dim, heads=heads, dropout=dropout, edge_dim=1))
 
         self.classifier = nn.Sequential(
             nn.Linear(hid_dim, hid_dim//2),
-            nn.LayerNorm(hid_dim//2),
             nn.GELU(),
             nn.Dropout(dropout),
-            nn.Linear(hid_dim//2, hid_dim // 4),
-            nn.LayerNorm(hid_dim//4),
-            nn.GELU(),
-            nn.Linear(hid_dim // 4, 1)
+            nn.Linear(hid_dim//2, 1),
         )
         self.act = nn.GELU()
 
@@ -86,9 +89,9 @@ class PPI(nn.Module):
         edge_index = torch.stack([row, col]).long()
         edge_attr = self.edge_norm(edge_attr)
 
-        w = self.act(self.trf(ax))  # [N, hid_dim]
-        x = self.node_norm(torch.cat([w, bx, cx], dim=1))       #1024+567=1591
-        x = self.act(self.reduction(x))
+        w = self.act(self.aa_encoder(ax))  # [N, hid_dim]
+        x = self.node_norm(self.gated(w, bx))      #1024+567=1591
+        # x = self.act(self.reduction(x))
 
         for conv in self.convs:
              x = conv(x, edge_index, edge_attr)

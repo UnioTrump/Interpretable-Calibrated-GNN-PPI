@@ -1,7 +1,7 @@
 # from .base import PPI
-from .Optimizer import SAM
+from .Optimizer import SophiaG
 from .improve_model import PPI
 __all__ = [
-    'SAM',
+    'SophiaG',
     'PPI'
 ]
