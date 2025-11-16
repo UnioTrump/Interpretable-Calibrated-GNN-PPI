@@ -9,8 +9,8 @@ VAL2 = ['/../gz-data/Test/Test315_ESM.pkl', '/../gz-data/Test/Test315_Prot.pkl',
 VAL3 = ['/../gz-data/Test/UBtest31_ESM.pkl', '/../gz-data/Test/UBtest31_Prot.pkl', '/../gz-data/Test/UBtest31_aaindex1.pkl', '/../gz-data/Test/UBtest31_edge.pkl', '/../gz-data/Test/UBtest31_label.pkl']
 VAL4 = ['/../gz-data/Test/Train362_ESM.pkl', '/../gz-data/Test/Train362_Prot.pkl', '/../gz-data/Test/Train362_aaindex1.pkl', '/../gz-data/Test/Train362_edge.pkl', '/../gz-data/Test/Train362_label.pkl']
 
-NUM_LAYER = 3
-HEADS = 4
+NUM_LAYER = 4
+HEADS = 8
 DROPOUT = 0.4
 gcn_hid_dim = 256
 
@@ -20,11 +20,11 @@ LEARNING_RATE = 5e-5
 WEIGHT_DECAY = 5e-3
 PATIENCE = 8
 
-A = 0.7     #wight of FN
-B = 0.3      #weght of FP
-BCE_WEIGHT = 1
+A = 0.36     #wight of FN
+B = 0.97      #weght of FP
+BCE_WEIGHT = 0.3
 FOCAL_WEIGHT = 0
-Tversky_WEIGHT = 0
+Tversky_WEIGHT = 0.7
 
 PRE_MODEL = '/../gz-data/TRAINING_OUTPUT/Saved_model'
 TUNING_MODEL = '/../gz-data/TRAINING_OUTPUT/Tuning_model'

@@ -45,7 +45,7 @@ def train(model, train_loader, optimizer, loss_fun):
         print(f'Average gradient norm: {avg_grad:.4f}\n'
               f'Max gradient norm: {max_grad:.4f}')
         # grad clip
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
     # ==============================
 
     return total_loss / len(train_loader)
@@ -82,8 +82,8 @@ def main():
     np.random.seed(seed)
     torch.manual_seed(seed)
 
-    train_dataset = PPIDataset(train_data, sample_ratio=2)
-    val_dataset = PPIDataset(val_data, sample_ratio=2)
+    train_dataset = PPIDataset(train_data, sample_ratio=2, is_training=True)
+    val_dataset = PPIDataset(val_data, sample_ratio=2, is_training=True)
     train_loader = DataLoader(train_dataset, batch_size=config.BATCH_SIZE, shuffle=True, collate_fn=sparse_collate)
     val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, collate_fn=sparse_collate)
 

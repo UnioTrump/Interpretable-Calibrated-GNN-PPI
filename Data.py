@@ -19,13 +19,18 @@ class PPIDataset(Dataset):
     Each item is a dict with keys: pid, esm_c, prot, AA, adj, y
     The 'adj' field will be converted to torch_sparse.SparseTensor.
     """
-    def __init__(self, data_list, sample_ratio=2):
+    def __init__(self, data_list, is_training, sample_ratio=2):
         self.data_list = data_list
         self.sample_ratio = sample_ratio
+        self.is_training = is_training
         self.device = device
         self.samples = []
-        self._prepare_samples()
-
+        self._prepare()
+    def _prepare(self):
+        if self.is_training:
+            self._prepare_samples()
+        else:
+            self._prepare_val()
     def _prepare_samples(self):
 
         # For training, do positive/negative sampling
@@ -85,6 +90,24 @@ class PPIDataset(Dataset):
 
             except Exception as e:
                 # print(e)
+                continue
+
+    def _prepare_val(self):
+        # For validation/testing, use full data
+        for d in tqdm(self.data_list, total=len(self.data_list)):
+            try:
+                if len(d['y']) != d['adj'].size(0):
+                    continue
+                self.samples.append({
+                    'pid': d['pid'],
+                    'esm_c': d['esm_c'],
+                    'prot': d['prot'],
+                    'AA': d['AA'],
+                    'adj': d['adj'],
+                    'y': d['y']
+                })
+            except Exception as e:
+                print(e)
                 continue
 
     def __len__(self):
@@ -199,8 +222,8 @@ if __name__ == '__main__':
     dl = PPIData.load_data(config.VAL1)
     train_data, val_data = PPIData.split_data(dl[:10])
 
-    train_dataset = PPIDataset(train_data, sample_ratio=2)
-    val_dataset = PPIDataset(val_data, sample_ratio=2)
+    train_dataset = PPIDataset(train_data, sample_ratio=2, is_training=True)
+    val_dataset = PPIDataset(val_data, sample_ratio=2, is_training=False)
     train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True, collate_fn=sparse_collate)
     val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, collate_fn=sparse_collate)
     for batch in train_loader:
