@@ -17,13 +17,13 @@ def train(model, train_loader, optimizer, loss_fun):
     model.train()
     total_loss = 0
     grad = []
-    for batch in train_loader:
+    for idx, batch in enumerate(train_loader):
         batch = {
             k: v.to(config.DEVICE) if (torch.is_tensor(v) or hasattr(v, 'to')) else v
             for k, v in batch.items()
         }
-        out = model(ax=batch['AA'], bx=batch['esm_c'], cx=batch['prot'], adj=batch['adj'])
-        loss = loss_fun.forward(out, batch['y'])
+        out = model(ax=batch['AA'], bx=batch['esm_c'], cx=batch['dssp'], dx=batch['BLOSUM'], adj=batch['adj'])
+        loss = loss_fun(out, batch['y'])
         loss.backward()
         #=========detach gradient=========
         total_norm = 0
@@ -35,7 +35,8 @@ def train(model, train_loader, optimizer, loss_fun):
         grad.append(total_norm)
         #=================================
         optimizer.step(bs=config.BATCH_SIZE)
-        optimizer.update_hessian()
+        if idx % 10 == 0:
+            optimizer.update_hessian()
         optimizer.zero_grad(set_to_none=True)
         total_loss += loss.item()
     # =========log grad=============
@@ -60,8 +61,8 @@ def test(model, val_loader, loss_fun):
             k: v.to(config.DEVICE) if (torch.is_tensor(v) or hasattr(v, 'to')) else v
             for k, v in batch.items()
         }
-        out = model(ax=batch['AA'], bx=batch['esm_c'], cx=batch['prot'], adj=batch['adj'])
-        loss = loss_fun.forward(out, batch['y'])
+        out = model(ax=batch['AA'], bx=batch['esm_c'], cx=batch['dssp'], dx=batch['BLOSUM'], adj=batch['adj'])
+        loss = loss_fun(out, batch['y'])
         total_loss += loss.item()
         all_probs.append(torch.sigmoid(out))
         all_targets.append(batch['y'].float())
@@ -76,24 +77,25 @@ def test(model, val_loader, loss_fun):
 def main():
 
     all_proteins = PPIData.load_data(config.DATA_DIR)
+
     train_data, val_data = PPIData.split_data(all_proteins, train_ratio=0.8, seed=42)
+    train_data = PPIDataset(train_data, sample_ratio=2, is_training=False)
+    val_data = PPIDataset(val_data, sample_ratio=2, is_training=False)
     seed = config.SEED
     torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
 
-    train_dataset = PPIDataset(train_data, sample_ratio=2, is_training=True)
-    val_dataset = PPIDataset(val_data, sample_ratio=2, is_training=True)
-    train_loader = DataLoader(train_dataset, batch_size=config.BATCH_SIZE, shuffle=True, collate_fn=sparse_collate)
-    val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, collate_fn=sparse_collate)
+    train_loader = DataLoader(train_data, batch_size=config.BATCH_SIZE, shuffle=True, collate_fn=sparse_collate)
+    val_loader = DataLoader(val_data, batch_size=1, shuffle=False, collate_fn=sparse_collate)
 
-    print(f'Train_data: {len(train_dataset)}\nVal_data: {len(val_dataset)}')
+    print(f'Train_data: {len(train_data)}\nVal_data: {len(val_data)}')
 
     model = PPI(hid_dim=config.gcn_hid_dim, heads=config.HEADS, dropout=config.DROPOUT)
     model.to(device)
     print(f'参数量：{sum(p.numel() for p in model.parameters())}')
 
-    optimizer = SophiaG(model.parameters(), lr=config.LEARNING_RATE, rho = 0.03, weight_decay=config.WEIGHT_DECAY)
+    optimizer = SophiaG(model.parameters(), lr=config.LEARNING_RATE, rho=0.05, weight_decay=config.WEIGHT_DECAY)
     warmup_epochs = 5
 
     def lr_lambda(EPOCH):
@@ -109,7 +111,7 @@ def main():
     criterion = HybridLoss(
         alpha=config.A,
         beta=config.B,
-        pos_wt=torch.tensor(1),     # pos_weight should be set according to the dataset
+        pos_wt=torch.tensor(0.3),     # Target: rise True prediction
         bce_weight=config.BCE_WEIGHT,
         focal_weight=config.FOCAL_WEIGHT,
         tversky_weight=config.Tversky_WEIGHT
@@ -148,6 +150,7 @@ def main():
             "Val Loss": f"{val_loss:.4f}",
             "AUPRC": f"{metrics['pr_auc']:.4f}",
             "AUROC": f"{metrics['roc_auc']:.4f}",
+            "Accuracy": f"{metrics['accuracy']:.4f}",
             "Patience": f"{patience_counter}/{config.PATIENCE}"
         })
     save_path = os.path.join(config.PLOT_DIR, f'Train.png')

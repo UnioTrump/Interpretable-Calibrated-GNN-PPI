@@ -81,5 +81,28 @@ def find_best_threshold_by_f_beta(y_true, y_scores, num_threshold, beta=0.8):
     best_idx = np.argmax(f_beta_values)
     best_threshold = thresholds[best_idx]
     best_f_beta = f_beta_values[best_idx]
-
     return best_threshold, best_f_beta
+
+
+def find_best_threshold_by_accuracy(y_true, y_scores, num_thresholds=200, refine=True):
+    """新增: 通过Accuracy寻找最佳阈值, 并在初次找到后做局部细化搜索"""
+    y_true = y_true.cpu().numpy() if isinstance(y_true, torch.Tensor) else np.asarray(y_true)
+    y_scores = y_scores.cpu().numpy() if isinstance(y_scores, torch.Tensor) else np.asarray(y_scores)
+    thresholds = np.linspace(0, 1, num_thresholds)
+    accs = []
+    for t in thresholds:
+        accs.append(accuracy_score(y_true, (y_scores >= t).astype(int)))
+    best_idx = int(np.argmax(accs))
+    best_t = float(thresholds[best_idx])  # 转换为Python float 解决类型警告
+    best_acc = float(accs[best_idx])
+    if refine:
+        low = max(0.0, best_t - 0.05)
+        high = min(1.0, best_t + 0.05)
+        fine_ts = np.linspace(low, high, num_thresholds)
+        fine_accs = []
+        for t in fine_ts:
+            fine_accs.append(accuracy_score(y_true, (y_scores >= t).astype(int)))
+        f_best_idx = int(np.argmax(fine_accs))
+        best_t = float(fine_ts[f_best_idx])
+        best_acc = float(fine_accs[f_best_idx])
+    return best_t, best_acc

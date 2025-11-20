@@ -27,7 +27,7 @@ def E(model, val_loader):
             for k, v in batch.items()
         }
 
-        out = model(ax=batch['AA'], bx=batch['esm_c'], cx=batch['prot'], adj=batch['adj'])
+        out = model(ax=batch['AA'], bx=batch['esm_c'], cx=batch['dssp'], dx=batch['BLOSUM'], adj=batch['adj'])
 
         probs = torch.sigmoid(out)
         all_prob.append(probs.detach().cpu())
@@ -100,10 +100,10 @@ def main():
     data_loader = PPIData()
     all_proteins = data_loader.load_data(eval(args.data))
 
-    val_dataset = PPIDataset(all_proteins, sample_ratio=2, is_training=True)
+    val_dataset = PPIDataset(all_proteins, sample_ratio=2, is_training=False)
     val_loader = DataLoader(
         val_dataset,
-        batch_size=config.BATCH_SIZE // 2,
+        batch_size=1,
         shuffle=False,
         collate_fn=sparse_collate,
         pin_memory=True

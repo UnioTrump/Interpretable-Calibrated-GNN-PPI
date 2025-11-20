@@ -1,9 +1,11 @@
 """
 Data:
-    AAINDEX Data type: torch.FloatTensor, Shape: [N, 566+ 20]
+    AAINDEX Data type: torch.FloatTensor, Shape: [N, 566]
+    DSSP Data type: torch.FloatTensor, Shape: [N, 14]
+    BLOSUM62 Data type: torch.FloatTensor, Shape: [N, 20]
     ESM-C Data type: torch.FloatTensor, Shape: [N, 1125]
-    ProtTrans Data type: torch.FloatTensor, Shape: [N, 1024]
 """
+import os
 from tqdm import tqdm
 import pickle as p
 import numpy as np
@@ -14,11 +16,7 @@ from torch_sparse import SparseTensor
 device = 'cpu'
 
 class PPIDataset(Dataset):
-    """
-    PyTorch Dataset for PPI data.
-    Each item is a dict with keys: pid, esm_c, prot, AA, adj, y
-    The 'adj' field will be converted to torch_sparse.SparseTensor.
-    """
+
     def __init__(self, data_list, is_training, sample_ratio=2):
         self.data_list = data_list
         self.sample_ratio = sample_ratio
@@ -33,7 +31,6 @@ class PPIDataset(Dataset):
             self._prepare_val()
     def _prepare_samples(self):
 
-        # For training, do positive/negative sampling
         for d in tqdm(self.data_list, total=len(self.data_list)):
             try:
                 labels = d['y'].detach().clone()
@@ -41,55 +38,50 @@ class PPIDataset(Dataset):
                 non_ppi_idx = (labels == 0).nonzero(as_tuple=True)[0]
                 Nr_p, Nr_n = len(ppi_idx), len(non_ppi_idx)
 
-                M = int(np.ceil(Nr_n / (self.sample_ratio * Nr_p))) if Nr_n > 0 else 1
-                non_ppi_idx = non_ppi_idx[torch.randperm(Nr_n)] if Nr_n > 0 else non_ppi_idx
+                M = int(np.ceil(Nr_n / (self.sample_ratio * Nr_p)))
+                non_ppi_idx = non_ppi_idx[torch.randperm(Nr_n)]
                 for i in range(M):
                     start = i * int(self.sample_ratio * Nr_p)
-                    end = min((i + 1) * int(self.sample_ratio * Nr_p), Nr_n) if Nr_n > 0 else 0
-                    non_ppi_part = non_ppi_idx[start:end] if Nr_n > 0 else torch.tensor([], dtype=torch.long)
-                    # build subset indices safely (handle empty non_ppi_part)
-                    if non_ppi_part.numel() > 0:
-                        subset_idx = torch.cat([ppi_idx, non_ppi_part])
-                    else:
-                        subset_idx = ppi_idx.clone()
-                    # shuffle subset indices
+                    end = min((i + 1) * int(self.sample_ratio * Nr_p), Nr_n)
+                    non_ppi_part = non_ppi_idx[start:end]
+
+                    subset_idx = torch.cat([ppi_idx, non_ppi_part])
                     subset_idx = subset_idx[torch.randperm(subset_idx.size(0))]
 
-                    # slice arrays/tensors for this subset
                     esm_slice = d['esm_c'][subset_idx]
-                    prot_slice = d['prot'][subset_idx]
                     AA_slice = d['AA'][subset_idx]
+                    BLOSUM_slice = d['BLOSUM'][subset_idx]
+                    dssp_slice = d['dssp'][subset_idx]
 
                     row, col, val = d['adj'].coo()
-                    # print((col))
-                    # keep edges where both endpoints are in subset_idx
                     mask_row = torch.zeros(d['adj'].sparse_sizes()[0], dtype=torch.bool, device=self.device)
                     mask_row[subset_idx.to(self.device)] = True
-                    # select edges
+
                     keep = mask_row[row] & mask_row[col]
                     new_row = row[keep]
                     new_col = col[keep]
                     new_val = val[keep]
-                    # remap indices to new range 0..len(subset_idx)-1
-                    # create mapping
+
                     inv_idx = -torch.ones(d['adj'].sparse_sizes()[0], dtype=torch.long, device=self.device)
                     inv_idx[subset_idx.to(self.device)] = torch.arange(len(subset_idx), device=self.device)
-                    if new_row.numel() > 0:
-                        new_row = inv_idx[new_row]
-                        new_col = inv_idx[new_col]
-                    adj_slice = SparseTensor(row=new_row, col=new_col, value=new_val, sparse_sizes=(len(subset_idx), len(subset_idx)))
-                    # print(adj_slice)
+                    new_row = inv_idx[new_row]
+                    new_col = inv_idx[new_col]
+                    adj_slice = SparseTensor(row=new_row, col=new_col, value=new_val,
+                                             sparse_sizes=(len(subset_idx), len(subset_idx)))
+
                     self.samples.append({
                         'pid': d['pid'],
                         'esm_c': esm_slice,
-                        'prot': prot_slice,
                         'AA': AA_slice,
+                        'BLOSUM': BLOSUM_slice,
+                        'dssp': dssp_slice,
                         'adj': adj_slice,
                         'y': labels[subset_idx]
                     })
 
             except Exception as e:
-                # print(e)
+                print(e)
+                print(d['pid'])
                 continue
 
     def _prepare_val(self):
@@ -101,8 +93,9 @@ class PPIDataset(Dataset):
                 self.samples.append({
                     'pid': d['pid'],
                     'esm_c': d['esm_c'],
-                    'prot': d['prot'],
                     'AA': d['AA'],
+                    'BLOSUM': d['BLOSUM'],
+                    'dssp': d['dssp'],
                     'adj': d['adj'],
                     'y': d['y']
                 })
@@ -119,13 +112,8 @@ class PPIDataset(Dataset):
 
 
 def sparse_collate(_batch):
-    """
-    Custom collate for batching samples that include a torch_sparse.SparseTensor 'adj'.
-    Produces a single batched adjacency by offsetting node indices so each sample becomes
-    a block on the diagonal of the big adjacency matrix.
-    """
 
-    AA_list, esm_list, prot_list, y_list = [], [], [], []
+    AA_list, esm_list, BLOSUM_list, dssp_list, y_list = [], [], [], [], []
     rows, cols, edge_attrs = [], [], []
     pid_list = []
 
@@ -133,43 +121,43 @@ def sparse_collate(_batch):
     for s in _batch:
         AA = s['AA']
         esm = s['esm_c']
-        prot = s['prot']
+        BLOSUM = s['BLOSUM']
+        dssp = s['dssp']
         y = s['y']
         adj = s['adj']
 
         n_nodes = AA.size(0)
         AA_list.append(AA)
         esm_list.append(esm)
-        prot_list.append(prot)
+        BLOSUM_list.append(BLOSUM)
+        dssp_list.append(dssp)
         y_list.append(y)
         pid_list.append(s.get('pid', None))
 
-        # adj expected to be torch_sparse.SparseTensor
         row, col, edge_attr = adj.coo()
-
         rows.append(row + node_offset)
         cols.append(col + node_offset)
         edge_attrs.append(edge_attr)
-
         node_offset += n_nodes
 
     AA_batch = torch.cat(AA_list, dim=0)
     esm_batch = torch.cat(esm_list, dim=0)
-    prot_batch = torch.cat(prot_list, dim=0)
+    BLOSUM_batch = torch.cat(BLOSUM_list, dim=0)
+    dssp_batch = torch.cat(dssp_list, dim=0)
     y_batch = torch.cat(y_list, dim=0)
 
     row_all = torch.cat(rows, dim=0)
     col_all = torch.cat(cols, dim=0)
     edge_attr_all = torch.cat(edge_attrs, dim=0)
 
-
     adj_batch = SparseTensor(row=row_all, col=col_all, value=edge_attr_all, sparse_sizes=(node_offset, node_offset))
 
     return {
         'pid': pid_list,
         'esm_c': esm_batch,
-        'prot': prot_batch,
         'AA': AA_batch,
+        'BLOSUM': BLOSUM_batch,
+        'dssp': dssp_batch,
         'adj': adj_batch,
         'y': y_batch
     }
@@ -180,35 +168,46 @@ class PPIData:
         self.device = config.DEVICE
 
     @staticmethod
-    def load_data(file_path: list):
+    def load_data(folder_path: str):
         """
         Note:
-            file_path is an ordered list: [ESM-C, ProtT5, AA, adj, label]
+            There are ordered: aaindex, BLOSUM, dssp, edge, ESM, label
         """
-        data_list = []
-        result_data = []
+        file_keywords = ['aaindex', 'BLOSUM', 'dssp', 'edge', 'ESM', 'label']
+        all_files = os.listdir(folder_path)
+        pkl_files = [f for f in all_files if f.endswith('.pkl')]
 
-        for file in file_path:
-            with open(file, 'rb') as f:
+        ordered_files = []
+        for key in file_keywords:
+            matched = [f for f in pkl_files if key.lower() in f.lower()]
+            if not matched:
+                raise FileNotFoundError(f"No file with keyword '{key}' found in {folder_path}")
+            ordered_files.append(os.path.join(folder_path, matched[0]))
+
+        data_list = []
+        for file_path in ordered_files:
+            with open(file_path, 'rb') as f:
                 data_list.append(p.load(f))
 
-        for i, data_item in enumerate(data_list[0]):  # Use the first file as reference
+        result_data = []
+        for i, _ in enumerate(data_list[0]):
             result_data.append({
-                'pid': data_item['PID'],
-                'esm_c': data_list[0][i]['x'],
-                'prot': data_list[1][i]['x'],
-                'AA': data_list[2][i]['AA'],
+                'pid': data_list[0][i]['PID'],
+                'AA': data_list[0][i]['AA'],
+                'BLOSUM': data_list[1][i]['x'],
+                'dssp': data_list[2][i]['x'],
                 'adj': data_list[3][i]['adj'],
-                'y': data_list[4][i]['label']
+                'esm_c': data_list[4][i]['x'],
+                'y': data_list[5][i]['label']
             })
-
         return result_data
 
     @staticmethod
     def split_data(All_data, train_ratio=0.8, seed=None):
         np.random.seed(seed)
 
-        data_copy = All_data.copy()
+        # Ensure we operate on a plain list to avoid relying on `.copy()` of custom types
+        data_copy = list(All_data)
         np.random.shuffle(data_copy)
 
         split_index = int(len(data_copy) * train_ratio)
@@ -220,13 +219,13 @@ class PPIData:
 if __name__ == '__main__':
 
     dl = PPIData.load_data(config.VAL1)
-    train_data, val_data = PPIData.split_data(dl[:10])
+    train_data, val_data = PPIData.split_data(dl)
 
     train_dataset = PPIDataset(train_data, sample_ratio=2, is_training=True)
     val_dataset = PPIDataset(val_data, sample_ratio=2, is_training=False)
     train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True, collate_fn=sparse_collate)
     val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, collate_fn=sparse_collate)
+    neg, pos = 0, 0
+
     for batch in train_loader:
-        print(batch['pid'], batch['y'].shape)
-    for batch in val_loader:
-        print(batch['pid'], batch['y'].shape)
+        print(batch.keys())
