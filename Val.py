@@ -14,8 +14,15 @@ import matplotlib.pyplot as plt
 device = config.DEVICE
 
 
+def _load_model(model_path):
+    checkpoint = torch.load(model_path, map_location=device)
+    model = PPI(hid_dim=config.gcn_hid_dim, heads=config.HEADS, dropout=config.DROPOUT).to(device)
+    model.load_state_dict(checkpoint['model'])
+    T = checkpoint['T'].to(device)
+    return model, T
+
 @torch.no_grad()
-def E(model, val_loader):
+def E(model, val_loader, T):
 
     model.eval()
     all_prob, all_target = [], []
@@ -28,7 +35,7 @@ def E(model, val_loader):
         }
 
         out = model(ax=batch['AA'], bx=batch['esm_c'], cx=batch['dssp'], dx=batch['BLOSUM'], adj=batch['adj'])
-
+        out = out / T  # 温度缩放
         probs = torch.sigmoid(out)
         all_prob.append(probs.detach().cpu())
         all_target.append(batch['y'].float().detach().cpu())
@@ -86,7 +93,7 @@ def draw(y_true, y_pred, save_dir='./plots'):
 
 
 def main():
-    # 解析命令行参数
+
     parser = argparse.ArgumentParser(description='PPI Validation')
     parser.add_argument('--data', required=True, type=str, help='Data path variable name')
     parser.add_argument('--Dset_name', required=True, type=str, help='Dataset name for saving results')
@@ -111,17 +118,11 @@ def main():
 
     print(f'Validation dataset size: {len(val_dataset)}')
 
-    model = PPI(hid_dim=config.gcn_hid_dim, heads=config.HEADS, dropout=config.DROPOUT).to(device)
-    best_model_path = os.path.join(config.PRE_MODEL, 'Train.pth')
+    model_path = os.path.join(config.PRE_MODEL, 'Model.pth')
+    model, T = _load_model(model_path)
+    print(f'Model and temperature loaded from {model_path}')
 
-    if not os.path.exists(best_model_path):
-        raise FileNotFoundError(f"Model file not found: {best_model_path}")
-
-    model.load_state_dict(torch.load(best_model_path, map_location=device))
-    model.eval()
-    print(f'✓ Model loaded from {best_model_path}')
-
-    metrics = E(model, val_loader)
+    metrics = E(model, val_loader, T)
 
     print('\n' + '=' * 50)
     print(f'Evaluation Results for {args.Dset_name}')

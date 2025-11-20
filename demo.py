@@ -1,3 +1,4 @@
+from torch import nn
 from tqdm import tqdm
 import torch
 import os
@@ -55,6 +56,30 @@ def train(model, train_loader, optimizer, loss_fun):
 def test(model, val_loader, loss_fun):
     model.eval()
     total_loss = 0
+    all_logits, all_probs, all_targets = [], [], []
+    for batch in val_loader:
+        batch = {
+            k: v.to(config.DEVICE) if (torch.is_tensor(v) or hasattr(v, 'to')) else v
+            for k, v in batch.items()
+        }
+        out = model(ax=batch['AA'], bx=batch['esm_c'], cx=batch['dssp'], dx=batch['BLOSUM'], adj=batch['adj'])
+        loss = loss_fun(out, batch['y'])
+        total_loss += loss.item()
+        all_logits.append(out)
+        all_probs.append(torch.sigmoid(out))
+        all_targets.append(batch['y'].float())
+    avg_loss = total_loss / len(val_loader)
+    logits_tensor = torch.cat(all_logits)
+    targets_tensor = torch.cat(all_targets, dim=0)
+    probs_tensor = torch.cat(all_probs, dim=0)
+    threshold, _ = find_best_threshold_by_f_beta(targets_tensor, probs_tensor, num_threshold=100)
+    metrics = calculate_metrics(y_true=targets_tensor, y_scores=probs_tensor, threshold=threshold)
+    return avg_loss, metrics, threshold, logits_tensor, targets_tensor
+
+@torch.no_grad()
+def test_T(model, val_loader, loss_fun, T):
+    model.eval()
+    total_loss = 0
     all_probs, all_targets = [], []
     for batch in val_loader:
         batch = {
@@ -62,6 +87,7 @@ def test(model, val_loader, loss_fun):
             for k, v in batch.items()
         }
         out = model(ax=batch['AA'], bx=batch['esm_c'], cx=batch['dssp'], dx=batch['BLOSUM'], adj=batch['adj'])
+        out = out / T
         loss = loss_fun(out, batch['y'])
         total_loss += loss.item()
         all_probs.append(torch.sigmoid(out))
@@ -72,6 +98,26 @@ def test(model, val_loader, loss_fun):
     threshold, _ = find_best_threshold_by_f_beta(all_targets_tensor, all_probs_tensor, num_threshold=100)
     metrics = calculate_metrics(y_true=all_targets_tensor, y_scores=all_probs_tensor, threshold=threshold)
     return avg_loss, metrics, threshold
+
+class Temp(nn.Module):
+    def __init__(self):
+        super(Temp, self).__init__()
+        self.T = nn.Parameter(torch.ones(1))
+
+    def forward(self, x):
+        return x / self.T
+
+def fit_T(logits, labels):
+    scaler = Temp().to(device)
+    optimizer_T = torch.optim.LBFGS([scaler.T], lr=0.01, max_iter=50)
+    def closure():
+        optimizer_T.zero_grad()
+        scaled_logits = scaler(logits)
+        loss = nn.BCEWithLogitsLoss()(scaled_logits, labels.float())
+        loss.backward()
+        return loss
+    optimizer_T.step(closure)
+    return scaler.T.detach().clone()
 
 
 def main():
@@ -111,7 +157,7 @@ def main():
     criterion = HybridLoss(
         alpha=config.A,
         beta=config.B,
-        pos_wt=torch.tensor(0.3),     # Target: rise True prediction
+        pos_wt=torch.tensor(0.25),     # Target: rise True prediction
         bce_weight=config.BCE_WEIGHT,
         focal_weight=config.FOCAL_WEIGHT,
         tversky_weight=config.Tversky_WEIGHT
@@ -126,7 +172,7 @@ def main():
         train_loss = train(model, train_loader, optimizer, criterion)
         train_losses.append(train_loss)
 
-        val_loss, metrics, best_threshold = test(model, val_loader, criterion)
+        val_loss, metrics, best_threshold, _, _ = test(model, val_loader, criterion)
         val_losses.append(val_loss)
 
         if epoch < warmup_epochs:
@@ -155,6 +201,18 @@ def main():
         })
     save_path = os.path.join(config.PLOT_DIR, f'Train.png')
     plot_loss_curves(train_losses, val_losses, save_path)
+
+    # Temperature Scaling
+    model.load_state_dict(torch.load(os.path.join(config.PRE_MODEL, f'Train.pth')))
+    model.eval()
+    _, _, _, logits_tensor, targets_tensor = test(model, val_loader, criterion)
+    T = fit_T(logits_tensor, targets_tensor)
+    loss, metrics, threshold = test_T(model, val_loader, criterion, T)
+    print(metrics)
+    torch.save({
+        'model': model.state_dict(),
+        'T': T.cpu()
+    }, "Model.pth")
 
 
 if __name__ == '__main__':

@@ -97,7 +97,7 @@ class PPIDataset(Dataset):
                     'BLOSUM': d['BLOSUM'],
                     'dssp': d['dssp'],
                     'adj': d['adj'],
-                    'y': d['y']
+                    'y': d['y'],
                 })
             except Exception as e:
                 print(e)
@@ -159,7 +159,7 @@ def sparse_collate(_batch):
         'BLOSUM': BLOSUM_batch,
         'dssp': dssp_batch,
         'adj': adj_batch,
-        'y': y_batch
+        'y': y_batch,
     }
 
 
@@ -198,7 +198,7 @@ class PPIData:
                 'dssp': data_list[2][i]['x'],
                 'adj': data_list[3][i]['adj'],
                 'esm_c': data_list[4][i]['x'],
-                'y': data_list[5][i]['label']
+                'y': data_list[5][i]['label'],
             })
         return result_data
 

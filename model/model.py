@@ -23,13 +23,13 @@ class Gated_Fuse(nn.Module):
 
 class PPIBlock(nn.Module):
 
-    def __init__(self, channels, heads, dropout, edge_dim=1):
+    def __init__(self, channels, heads, dropout, edge_dim):
         super().__init__()
 
         self.conv1 = GPSConv(
             channels=channels,
             conv=TransformerConv(in_channels=channels, out_channels=channels,
-                                 heads=heads, dropout=dropout, edge_dim=2, concat=False),
+                                 heads=heads, dropout=dropout, edge_dim=edge_dim, concat=False),
             heads=heads,
             dropout=dropout,
             act='GELU'
