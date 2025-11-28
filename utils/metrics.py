@@ -4,7 +4,7 @@ from sklearn.metrics import (
     confusion_matrix, roc_auc_score, average_precision_score,
     accuracy_score, precision_score, recall_score, f1_score, matthews_corrcoef
 )
-
+import config
 
 def calculate_metrics(y_true, y_scores, threshold):
     """
@@ -64,7 +64,7 @@ def find_best_threshold_by_mcc(y_true, y_scores, num_thresholds=100):
     best_idx = np.argmax(mcc_values)
     return thresholds[best_idx], mcc_values[best_idx], mcc_values, thresholds
 
-def find_best_threshold_by_f_beta(y_true, y_scores, num_threshold, beta=0.8):
+def find_best_threshold_by_f_beta(y_true, y_scores, num_threshold, beta=config.F_BETA):
     """Find the best threshold by maximizing the F-beta score."""
 
     thresholds = np.linspace(0, 1, num_threshold)

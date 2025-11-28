@@ -10,21 +10,23 @@ VAL3 = '../gz-data/Train362/'
 
 NUM_LAYER = 2
 HEADS = 8
-DROPOUT = 0.3
+DROPOUT = 0.2
 gcn_hid_dim = 512
 
 EPOCHS = 100
 BATCH_SIZE = 32
-LEARNING_RATE = 5e-5
+LEARNING_RATE = 5e-4
 WEIGHT_DECAY = 5e-3
 PATIENCE = 8
 K_FOLDS = 5
 
-A = 0.4     #wight of FN
-B = 0.8      #weght of FP
+A = 0.3     #wight of FP
+B = 0.8      #weght of FN
 BCE_WEIGHT = 0.3
 FOCAL_WEIGHT = 0
 Tversky_WEIGHT = 0.7
+
+F_BETA = 0.7
 
 PRE_MODEL = '/../gz-data/TRAINING_OUTPUT/Saved_model'
 TUNING_MODEL = '/../gz-data/TRAINING_OUTPUT/Tuning_model'

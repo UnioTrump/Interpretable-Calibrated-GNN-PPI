@@ -8,8 +8,8 @@ class WeightedCrossEntropy(nn.Module):
         self.pos_weight = pos_wt
 
     def forward(self, pred, true):
-
-        loss = F.binary_cross_entropy_with_logits(pred.squeeze(), true, pos_weight=self.pos_weight)
+        pred = pred.view_as(true)
+        loss = F.binary_cross_entropy_with_logits(pred, true, pos_weight=self.pos_weight)
         return loss
 
 class FocalLoss(nn.Module):
