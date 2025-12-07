@@ -7,16 +7,17 @@ DATA_DIR = '../gz-data/Train2066/'
 VAL1 = '../gz-data/Test60/'
 VAL2 = '../gz-data/Test315/'
 VAL3 = '../gz-data/Train362/'
+VAL4 = '../gz-data/UBtest31/'
 
-NUM_LAYER = 2
+NUM_LAYER = 4
 HEADS = 8
 DROPOUT = 0.2
-gcn_hid_dim = 512
+gcn_hid_dim = 128
 
 EPOCHS = 100
-BATCH_SIZE = 32
-LEARNING_RATE = 5e-4
-WEIGHT_DECAY = 5e-3
+BATCH_SIZE = 16
+LEARNING_RATE = 4e-4
+WEIGHT_DECAY = 4e-4
 PATIENCE = 8
 K_FOLDS = 5
 

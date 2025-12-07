@@ -8,6 +8,8 @@ import config
 from Data import PPIData, PPIDataset, sparse_collate
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+import argparse
+import glob
 
 device = config.DEVICE
 
@@ -21,7 +23,8 @@ def test(model, val_loader, loss_fun):
             k: v.to(config.DEVICE) if (torch.is_tensor(v) or hasattr(v, 'to')) else v
             for k, v in batch.items()
         }
-        out = model(ax=batch['AA'], bx=batch['esm_c'], cx=batch['dssp'], dx=batch['BLOSUM'], adj=batch['adj'])
+        out = model(ax=batch['AA'], bx=batch['esm_c'], cx=batch['dssp'], dx=batch['BLOSUM'], ex=batch['pse'],
+                    fx=batch['res_atom'], adj=batch['adj'])
         loss = loss_fun(out, batch['y'])
         total_loss += loss.item()
         all_logits.append(out)
@@ -46,7 +49,7 @@ def test_T(model, val_loader, loss_fun, T):
             k: v.to(config.DEVICE) if (torch.is_tensor(v) or hasattr(v, 'to')) else v
             for k, v in batch.items()
         }
-        out = model(ax=batch['AA'], bx=batch['esm_c'], cx=batch['dssp'], dx=batch['BLOSUM'], adj=batch['adj'])
+        out = model(ax=batch['AA'], bx=batch['esm_c'], cx=batch['dssp'], dx=batch['BLOSUM'], ex=batch.get('pse'), fx=batch.get('res_atom'), adj=batch['adj'])
         out = out / T
         loss = loss_fun(out, batch['y'])
         total_loss += loss.item()
@@ -80,58 +83,82 @@ def fit_T(logits, labels):
     return scaler.T.detach().clone()
 
 def main():
+    parser = argparse.ArgumentParser(description='Fit temperature for trained PPI model')
+    parser.add_argument('--model_path', type=str, default=None, help='Path to trained model (pth file)')
+    parser.add_argument('--model_dir', type=str, default=None, help='Directory containing fold model files')
+    parser.add_argument('--data_path', type=str, default=None, help='Path to validation data folder')
+    parser.add_argument('--save_path', type=str, default=None, help='Path to save calibrated model(s)')
+    args = parser.parse_args()
 
-    all_proteins = PPIData.load_data(config.DATA_DIR)
-
+    data_path = args.data_path if args.data_path else config.VAL3
+    all_proteins = PPIData.load_data(data_path)
     _, val_data = PPIData.split_data(all_proteins, train_ratio=0.8, seed=42)
-    # train_data = PPIDataset(train_data, sample_ratio=2, is_training=False)
     val_data = PPIDataset(val_data, sample_ratio=2, is_training=False)
     seed = config.SEED
     torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-
     val_loader = DataLoader(val_data, batch_size=1, shuffle=False, collate_fn=sparse_collate)
-
     print(f'Val_data: {len(val_data)}')
-
     criterion = HybridLoss(
         alpha=config.A,
         beta=config.B,
-        pos_wt=torch.tensor(0.1),     # Target: rise True prediction
+        pos_wt=torch.tensor(0.1),
         bce_weight=config.BCE_WEIGHT,
         focal_weight=config.FOCAL_WEIGHT,
         tversky_weight=config.Tversky_WEIGHT
     )
 
-    model = PPI(hid_dim=config.gcn_hid_dim, heads=config.HEADS, dropout=config.DROPOUT)
-    model.to(device)
-    # Temperature Scaling
-    model.load_state_dict(torch.load(os.path.join(config.PRE_MODEL, f'Train.pth')))
-    print('Load Successfully!')
-    model.eval()
-    _, _, _, logits_tensor, targets_tensor = test(model, val_loader, criterion)
-    T = fit_T(logits_tensor, targets_tensor.view(-1, 1))
-    loss, metrics, threshold = test_T(model, val_loader, criterion, T)
-    print(f'Temperature T: {T.item():.4f}')
+    # 处理多个fold模型
+    model_files = []
+    if args.model_dir:
+        model_files = sorted(glob.glob(os.path.join(args.model_dir, 'Model_fold*.pth')))
+        if not model_files:
+            print(f'No fold model files found in {args.model_dir}')
+            return
+    elif args.model_path:
+        model_files = [args.model_path]
+    else:
+        model_files = [os.path.join(config.PRE_MODEL, 'Model.pth')]
 
-    save_path = os.path.join(config.PRE_MODEL, f'Model.pth')
-    torch.save({
-        'model': model.state_dict(),
-        'T': T.cpu()
-    }, save_path)
-
-    print('=' * 50)
-    for key, val in metrics.items():
-        if isinstance(val, (int, float)):
-            print(f"  {key.replace('_', ' ').title()}: {val:.4f}")
-        elif isinstance(val, dict):
-            print(f"  {key.replace('_', ' ').title()}:")
-            for sub_key, sub_val in val.items():
-                print(f"    {sub_key.upper()}: {sub_val}")
+    for model_path in model_files:
+        fold_name = os.path.splitext(os.path.basename(model_path))[0]
+        model = PPI(hid_dim=config.gcn_hid_dim, heads=config.HEADS, dropout=config.DROPOUT)
+        model.to(device)
+        checkpoint = torch.load(model_path, map_location=device)
+        if isinstance(checkpoint, dict) and 'model' in checkpoint:
+            model.load_state_dict(checkpoint['model'])
         else:
-            print(f"  {key.replace('_', ' ').title()}: {val}")
-    print('=' * 50 + '\n')
+            model.load_state_dict(checkpoint)
+        print(f'Loaded model from {model_path}')
+        model.eval()
+        _, _, _, logits_tensor, targets_tensor = test(model, val_loader, criterion)
+        T = fit_T(logits_tensor, targets_tensor.view(-1, 1))
+        loss, metrics, threshold = test_T(model, val_loader, criterion, T)
+        print(f'Temperature T: {T.item():.4f}')
+        if args.save_path:
+            save_path = os.path.join(args.save_path, f'{fold_name}_calibrated.pth')
+        elif args.model_dir:
+            save_path = os.path.join(args.model_dir, f'{fold_name}_calibrated.pth')
+        else:
+            save_path = os.path.join(config.PRE_MODEL, f'{fold_name}_calibrated.pth')
+        torch.save({
+            'model': model.state_dict(),
+            'T': T.cpu()
+        }, save_path)
+        print(f'Calibrated model saved to {save_path}')
+        print('=' * 50)
+        print(f'Results for {fold_name}:')
+        for key, val in metrics.items():
+            if isinstance(val, (int, float)):
+                print(f"  {key.replace('_', ' ').title()}: {val:.4f}")
+            elif isinstance(val, dict):
+                print(f"  {key.replace('_', ' ').title()}:")
+                for sub_key, sub_val in val.items():
+                    print(f"    {sub_key.upper()}: {sub_val}")
+            else:
+                print(f"  {key.replace('_', ' ').title()}: {val}")
+        print('=' * 50 + '\n')
 
 if __name__ == '__main__':
     main()

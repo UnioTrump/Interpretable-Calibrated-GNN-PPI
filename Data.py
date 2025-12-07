@@ -98,6 +98,8 @@ class PPIDataset(Dataset):
                     'dssp': d['dssp'],
                     'adj': d['adj'],
                     'y': d['y'],
+                    'pse': d['pse'],
+                    'res_atom': d['res_atom'],
                 })
             except Exception as e:
                 print(e)
@@ -113,7 +115,7 @@ class PPIDataset(Dataset):
 
 def sparse_collate(_batch):
 
-    AA_list, esm_list, BLOSUM_list, dssp_list, y_list = [], [], [], [], []
+    AA_list, esm_list, BLOSUM_list, dssp_list, y_list, pse_list, res_atom_list = [], [], [], [], [], [], []
     rows, cols, edge_attrs = [], [], []
     pid_list = []
 
@@ -125,6 +127,8 @@ def sparse_collate(_batch):
         dssp = s['dssp']
         y = s['y']
         adj = s['adj']
+        pse = s['pse']
+        res_atom = s['res_atom']
 
         n_nodes = AA.size(0)
         AA_list.append(AA)
@@ -133,6 +137,8 @@ def sparse_collate(_batch):
         dssp_list.append(dssp)
         y_list.append(y)
         pid_list.append(s.get('pid', None))
+        pse_list.append(pse)
+        res_atom_list.append(res_atom)
 
         row, col, edge_attr = adj.coo()
         rows.append(row + node_offset)
@@ -145,6 +151,8 @@ def sparse_collate(_batch):
     BLOSUM_batch = torch.cat(BLOSUM_list, dim=0)
     dssp_batch = torch.cat(dssp_list, dim=0)
     y_batch = torch.cat(y_list, dim=0)
+    pse_batch = torch.cat(pse_list, dim=0)
+    res_atom_batch = torch.cat(res_atom_list, dim=0)
 
     row_all = torch.cat(rows, dim=0)
     col_all = torch.cat(cols, dim=0)
@@ -160,6 +168,8 @@ def sparse_collate(_batch):
         'dssp': dssp_batch,
         'adj': adj_batch,
         'y': y_batch,
+        'pse': pse_batch,
+        'res_atom': res_atom_batch,
     }
 
 
@@ -173,7 +183,7 @@ class PPIData:
         Note:
             There are ordered: aaindex, BLOSUM, dssp, edge, ESM, label
         """
-        file_keywords = ['aaindex', 'BLOSUM', 'dssp', 'edge', 'ESM', 'label']
+        file_keywords = ['aaindex', 'BLOSUM', 'dssp', 'edge', 'ESMC', 'label', 'pse_1a','res_atom_1a']
         all_files = os.listdir(folder_path)
         pkl_files = [f for f in all_files if f.endswith('.pkl')]
 
@@ -199,6 +209,8 @@ class PPIData:
                 'adj': data_list[3][i]['adj'],
                 'esm_c': data_list[4][i]['x'],
                 'y': data_list[5][i]['label'],
+                'pse': data_list[6][i]['x'],
+                'res_atom': data_list[7][i]['x'],
             })
         return result_data
 

@@ -4,7 +4,9 @@ import matplotlib.pyplot as plt
 from datetime import datetime
 
 def plot_loss_curves(train_losses, val_losses, save_path='loss_curves.png'):
-    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    save_dir = os.path.dirname(save_path)
+    if save_dir:
+        os.makedirs(save_dir, exist_ok=True)
     epochs = range(1, len(train_losses) + 1)
     plt.figure(figsize=(10, 6))
     plt.plot(epochs, train_losses, 'b-o', label='Training Loss')

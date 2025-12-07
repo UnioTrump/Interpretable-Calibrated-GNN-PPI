@@ -41,6 +41,17 @@ class TverskyLoss(nn.Module):
         true = true.view(-1)
         pred = pred.view(-1)
 
+        def forward(self, pred, true):
+            pred = torch.sigmoid(pred).squeeze()
+            true = true.view(-1)
+            pred = pred.view(-1)
+
+            TP = (pred * true).sum()
+            FP = ((1 - true) * pred).sum()
+            FN = (true * (1 - pred)).sum()
+
+            tversky_index = (TP + self.smooth) / (TP + self.alpha * FP + self.beta * FN + self.smooth)
+            return (1 - tversky_index).pow(0.75)
         TP = (pred * true).sum()
         FP = ((1 - true) * pred).sum()
         FN = (true * (1 - pred)).sum()
@@ -64,9 +75,8 @@ class HybridLoss(nn.Module):
         pred = pred.float()
         true = true.float()
         bce_loss = self.bce(pred, true)
-        focal_loss = self.focal(pred, true)
         tversky_loss = self.tversky(pred, true)
-        return self.focal_weight * focal_loss + self.tversky_weight * tversky_loss + self.bce_weight * bce_loss
+        return self.tversky_weight * tversky_loss + self.bce_weight * bce_loss
 
 if __name__ == '__main__':
     pred = torch.tensor([-3., 4., -7., 9., 2.])
