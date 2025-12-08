@@ -86,20 +86,23 @@ def main():
     parser = argparse.ArgumentParser(description='Fit temperature for trained PPI model')
     parser.add_argument('--model_path', type=str, default=None, help='Path to trained model (pth file)')
     parser.add_argument('--model_dir', type=str, default=None, help='Directory containing fold model files')
-    parser.add_argument('--data_path', type=str, default=None, help='Path to validation data folder')
+    parser.add_argument('--data_path', type=str, default=None, help='Path to calibration data folder (no train/val re-split)')
     parser.add_argument('--save_path', type=str, default=None, help='Path to save calibrated model(s)')
     args = parser.parse_args()
 
+    # calibration / tuning set: should be pre-split and not overlap with training data
     data_path = args.data_path if args.data_path else config.VAL3
     all_proteins = PPIData.load_data(data_path)
-    _, val_data = PPIData.split_data(all_proteins, train_ratio=0.8, seed=42)
-    val_data = PPIDataset(val_data, sample_ratio=2, is_training=False)
+
+    calib_data = PPIDataset(all_proteins, sample_ratio=2, is_training=False)
+
     seed = config.SEED
     torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-    val_loader = DataLoader(val_data, batch_size=1, shuffle=False, collate_fn=sparse_collate)
-    print(f'Val_data: {len(val_data)}')
+
+    val_loader = DataLoader(calib_data, batch_size=1, shuffle=False, collate_fn=sparse_collate)
+    print(f'Calibration data size: {len(calib_data)}')
     criterion = HybridLoss(
         alpha=config.A,
         beta=config.B,

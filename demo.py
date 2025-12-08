@@ -8,6 +8,7 @@ import config
 from Data import PPIData, PPIDataset, sparse_collate
 from torch.utils.data import DataLoader
 from sklearn.model_selection import KFold
+from Fit_T import fit_T, test_T, test as test_T_func
 import os
 
 device = config.DEVICE
@@ -80,60 +81,88 @@ def test(model, val_loader, loss_fun):
 
 def cross_validate():
     all_proteins = PPIData.load_data(config.DATA_DIR)
+
+    train_all, test_all, calib_all = PPIData.split_data(
+        all_proteins,
+        train_ratio=0.8,
+        test_ratio=0.1,
+        seed=config.SEED,
+    )
+    print(f"Total samples: {len(all_proteins)} | Train: {len(train_all)} | Test: {len(test_all)} | Calib: {len(calib_all)}")
+
+    calib_dataset = PPIDataset(calib_all, is_training=False)
+    calib_loader = DataLoader(calib_dataset, batch_size=1, shuffle=False, collate_fn=sparse_collate)
+
     kf = KFold(n_splits=config.K_FOLDS, shuffle=True, random_state=config.SEED)
     auprc_scores = []
-    proteins = np.array(all_proteins)
-    for fold, (train_idx, val_idx) in enumerate(kf.split(proteins)):
-        train_data = proteins[train_idx].tolist()
-        val_data = proteins[val_idx].tolist()
-        train_data = PPIDataset(train_data, is_training=False)
-        val_data = PPIDataset(val_data, is_training=False)
+    train_array = np.array(train_all)
+
+    for fold, (train_idx, val_idx) in enumerate(kf.split(train_array)):
+        fold_train_data = train_array[train_idx].tolist()
+        fold_val_data = train_array[val_idx].tolist()
+
+        fold_train_data = PPIDataset(fold_train_data, is_training=False)
+        fold_val_data = PPIDataset(fold_val_data, is_training=False)
+
         torch.cuda.manual_seed_all(config.SEED)
         np.random.seed(config.SEED)
         torch.manual_seed(config.SEED)
-        train_loader = DataLoader(train_data, batch_size=config.BATCH_SIZE, shuffle=True, collate_fn=sparse_collate)
-        val_loader = DataLoader(val_data, batch_size=1, shuffle=False, collate_fn=sparse_collate)
+
+        train_loader = DataLoader(fold_train_data, batch_size=config.BATCH_SIZE, shuffle=True, collate_fn=sparse_collate)
+        val_loader = DataLoader(fold_val_data, batch_size=1, shuffle=False, collate_fn=sparse_collate)
+
         model = PPI(hid_dim=config.gcn_hid_dim, heads=config.HEADS, dropout=config.DROPOUT)
         model.to(device)
+
         optimizer = SophiaG(model.parameters(), lr=config.LEARNING_RATE, rho=0.05, weight_decay=config.WEIGHT_DECAY)
+
         warmup_epochs = 5
+
         def lr_lambda(EPOCH):
             if EPOCH < warmup_epochs:
                 return (EPOCH + 1) / warmup_epochs
             return 1.0
+
         warmup_scheduler = LambdaLR(optimizer, lr_lambda)
         reduce_lr_scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=5)
+
         criterion = HybridLoss(
             alpha=config.A,
             beta=config.B,
             pos_wt=torch.tensor(0.1),
             bce_weight=config.BCE_WEIGHT,
+            tversky_weight=config.Tversky_WEIGHT,
             focal_weight=config.FOCAL_WEIGHT,
-            tversky_weight=config.Tversky_WEIGHT
         )
+
         best_auprc = float('-inf')
         patience_counter = 0
         train_losses = []
         val_losses = []
-        # 保存模型目录
+
         save_dir = config.PRE_MODEL
         os.makedirs(save_dir, exist_ok=True)
+
         epoch_iter = tqdm(range(config.EPOCHS), desc=f"Fold {fold+1}", ncols=180)
         for epoch in epoch_iter:
             train_loss = train(model, train_loader, optimizer, criterion)
             val_loss, metrics, best_threshold = test(model, val_loader, criterion)
+
             train_losses.append(train_loss)
             val_losses.append(val_loss)
+
             if epoch < warmup_epochs:
                 warmup_scheduler.step()
             else:
                 reduce_lr_scheduler.step(metrics['pr_auc'])
+
             if metrics['pr_auc'] > best_auprc:
                 best_auprc = metrics['pr_auc']
                 patience_counter = 0
                 torch.save(model.state_dict(), os.path.join(save_dir, f'Model_fold{fold+1}.pth'))
             else:
                 patience_counter += 1
+
             if patience_counter >= config.PATIENCE:
                 break
 
@@ -143,12 +172,33 @@ def cross_validate():
                 "val_auprc": f"{metrics['pr_auc']:.4f}",
                 "val_auroc": f"{metrics['roc_auc']:.4f}",
                 "acc": f"{metrics['accuracy']:.4f}",
-                "patience": f"{patience_counter}"
+                "patience": f"{patience_counter}",
             })
 
         plot_loss_curves(train_losses, val_losses, save_path=f"plots/loss_curve_fold{fold+1}.png")
         print(f"Fold {fold+1}: Best AUPRC = {best_auprc:.4f}")
         auprc_scores.append(best_auprc)
+
+        # === Temperature scaling immediately after training this fold ===
+        best_model_path = os.path.join(save_dir, f'Model_fold{fold+1}.pth')
+        model.load_state_dict(torch.load(best_model_path, map_location=device))
+        model.eval()
+
+        calib_loss, calib_metrics, _, logits_tensor, targets_tensor = test_T_func(model, calib_loader, criterion)
+        T = fit_T(logits_tensor, targets_tensor.view(-1, 1))
+        print(f"[Fold {fold+1}] Fitted temperature T = {T.item():.4f}")
+
+        loss_T, metrics_T, threshold_T = test_T(model, calib_loader, criterion, T)
+        print(f"[Fold {fold+1}] Calibrated metrics on calib set:")
+        for key, val in metrics_T.items():
+            if isinstance(val, (int, float)):
+                print(f"  {key}: {val:.4f}")
+
+        torch.save({
+            'model': model.state_dict(),
+            'T': T.cpu()
+        }, os.path.join(save_dir, f'Model_fold{fold+1}_calibrated.pth'))
+
     print(f"Cross-validation AUPRCs: {auprc_scores}")
     print(f"Mean AUPRC: {np.mean(auprc_scores):.4f}")
 

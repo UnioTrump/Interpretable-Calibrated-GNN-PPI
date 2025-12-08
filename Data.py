@@ -10,7 +10,7 @@ from tqdm import tqdm
 import pickle as p
 import numpy as np
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 import config
 from torch_sparse import SparseTensor
 device = 'cpu'
@@ -23,69 +23,10 @@ class PPIDataset(Dataset):
         self.is_training = is_training
         self.device = device
         self.samples = []
-        self._prepare()
-    def _prepare(self):
-        if self.is_training:
-            self._prepare_samples()
-        else:
-            self._prepare_val()
-    def _prepare_samples(self):
-
-        for d in tqdm(self.data_list, total=len(self.data_list)):
-            try:
-                labels = d['y'].detach().clone()
-                ppi_idx = (labels == 1).nonzero(as_tuple=True)[0]
-                non_ppi_idx = (labels == 0).nonzero(as_tuple=True)[0]
-                Nr_p, Nr_n = len(ppi_idx), len(non_ppi_idx)
-
-                M = int(np.ceil(Nr_n / (self.sample_ratio * Nr_p)))
-                non_ppi_idx = non_ppi_idx[torch.randperm(Nr_n)]
-                for i in range(M):
-                    start = i * int(self.sample_ratio * Nr_p)
-                    end = min((i + 1) * int(self.sample_ratio * Nr_p), Nr_n)
-                    non_ppi_part = non_ppi_idx[start:end]
-
-                    subset_idx = torch.cat([ppi_idx, non_ppi_part])
-                    subset_idx = subset_idx[torch.randperm(subset_idx.size(0))]
-
-                    esm_slice = d['esm_c'][subset_idx]
-                    AA_slice = d['AA'][subset_idx]
-                    BLOSUM_slice = d['BLOSUM'][subset_idx]
-                    dssp_slice = d['dssp'][subset_idx]
-
-                    row, col, val = d['adj'].coo()
-                    mask_row = torch.zeros(d['adj'].sparse_sizes()[0], dtype=torch.bool, device=self.device)
-                    mask_row[subset_idx.to(self.device)] = True
-
-                    keep = mask_row[row] & mask_row[col]
-                    new_row = row[keep]
-                    new_col = col[keep]
-                    new_val = val[keep]
-
-                    inv_idx = -torch.ones(d['adj'].sparse_sizes()[0], dtype=torch.long, device=self.device)
-                    inv_idx[subset_idx.to(self.device)] = torch.arange(len(subset_idx), device=self.device)
-                    new_row = inv_idx[new_row]
-                    new_col = inv_idx[new_col]
-                    adj_slice = SparseTensor(row=new_row, col=new_col, value=new_val,
-                                             sparse_sizes=(len(subset_idx), len(subset_idx)))
-
-                    self.samples.append({
-                        'pid': d['pid'],
-                        'esm_c': esm_slice,
-                        'AA': AA_slice,
-                        'BLOSUM': BLOSUM_slice,
-                        'dssp': dssp_slice,
-                        'adj': adj_slice,
-                        'y': labels[subset_idx]
-                    })
-
-            except Exception as e:
-                print(e)
-                print(d['pid'])
-                continue
+        self._prepare_val()
 
     def _prepare_val(self):
-        # For validation/testing, use full data
+
         for d in tqdm(self.data_list, total=len(self.data_list)):
             try:
                 if len(d['y']) != d['adj'].size(0):
@@ -215,29 +156,26 @@ class PPIData:
         return result_data
 
     @staticmethod
-    def split_data(All_data, train_ratio=0.8, seed=None):
-        np.random.seed(seed)
+    def split_data(All_data, train_ratio=0.8, test_ratio=0.1, seed=None):
 
-        # Ensure we operate on a plain list to avoid relying on `.copy()` of custom types
+        if train_ratio + test_ratio > 1.0:
+            raise ValueError("train_ratio + test_ratio must be <= 1.0")
+
+        np.random.seed(seed)
         data_copy = list(All_data)
         np.random.shuffle(data_copy)
 
-        split_index = int(len(data_copy) * train_ratio)
-        train_d = data_copy[:split_index]
-        val_d = data_copy[split_index:]
+        n_total = len(data_copy)
+        train_end = int(n_total * train_ratio)
+        test_end = train_end + int(n_total * test_ratio)
 
-        return train_d, val_d
+        train_d = data_copy[:train_end]
+        test_d = data_copy[train_end:test_end]
+        val_d = data_copy[test_end:]
 
-if __name__ == '__main__':
+        assert len(train_d) + len(test_d) + len(val_d) == n_total
 
-    dl = PPIData.load_data(config.VAL1)
-    train_data, val_data = PPIData.split_data(dl)
+        if test_ratio == 0:
+            return train_d, val_d
 
-    train_dataset = PPIDataset(train_data, sample_ratio=2, is_training=True)
-    val_dataset = PPIDataset(val_data, sample_ratio=2, is_training=False)
-    train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True, collate_fn=sparse_collate)
-    val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, collate_fn=sparse_collate)
-    neg, pos = 0, 0
-
-    for batch in train_loader:
-        print(batch.keys())
+        return train_d, test_d, val_d

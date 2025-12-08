@@ -16,14 +16,12 @@ device = config.DEVICE
 def _load_model(model_path):
     checkpoint = torch.load(model_path, map_location=device)
     model = PPI(hid_dim=config.gcn_hid_dim, heads=config.HEADS, dropout=config.DROPOUT).to(device)
-    if isinstance(checkpoint, dict) and 'model' in checkpoint:
-        model.load_state_dict(checkpoint['model'])
-    else:
-        model.load_state_dict(checkpoint)
-    return model
+    model.load_state_dict(checkpoint['model'])
+    T = checkpoint['T'].to(device)
+    return model, T
 
 @torch.no_grad()
-def validate(model, val_loader, draw_plots=True, save_dir='./plots'):
+def validate(model, val_loader, draw_plots=True, save_dir='./plots', T=None):
     model.eval()
     all_prob, all_target = [], []
     for batch in tqdm(val_loader, desc='Validating'):
@@ -32,6 +30,8 @@ def validate(model, val_loader, draw_plots=True, save_dir='./plots'):
             for k, v in batch.items()
         }
         out = model(ax=batch['AA'], bx=batch['esm_c'], cx=batch['dssp'], dx=batch['BLOSUM'], ex=batch['pse'], fx=batch['res_atom'], adj=batch['adj'])
+        if T is not None:
+            out = out / T
         probs = torch.sigmoid(out)
         all_prob.append(probs.detach().cpu())
         all_target.append(batch['y'].float().detach().cpu())
@@ -63,9 +63,9 @@ def draw(y_true, y_pred, save_dir='./plots'):
     plt.close()
     # ========== PR 曲线 ==========
     precision, recall, _ = precision_recall_curve(y_true, y_pred)
-    aupr = average_precision_score(y_true, y_pred)
+    auprc = average_precision_score(y_true, y_pred)
     plt.figure(figsize=(8, 6))
-    plt.plot(recall, precision, color='blue', lw=2, label=f'PR curve (AUPR = {aupr:.3f})')
+    plt.plot(recall, precision, color='blue', lw=2, label=f'PR curve (AUPRC = {auprc:.3f})')
     plt.xlim([0.0, 1.0])
     plt.ylim([0.0, 1.05])
     plt.xlabel('Recall', fontsize=12)
@@ -96,9 +96,11 @@ def validate_from_config(data_path, dset_name, model_path=None, draw_plots=True,
     print(f'Validation dataset size: {len(val_dataset)}')
     if model_path is None:
         model_path = os.path.join(config.PRE_MODEL, 'Model.pth')
-    model = _load_model(model_path)
+    model, T = _load_model(model_path)
     print(f'Model loaded from {model_path}')
-    metrics = validate(model, val_loader, save_dir=save_dir)
+    if T is not None:
+        print(f'Loaded temperature T = {T.item():.4f}')
+    metrics = validate(model, val_loader, save_dir=save_dir, T=T)
     print('\n' + '=' * 50)
     print(f'Evaluation Results for {dset_name}')
     print('=' * 50)
@@ -117,6 +119,11 @@ def validate_from_config(data_path, dset_name, model_path=None, draw_plots=True,
     return metrics
 
 def test_kfold_models(model_dir, model_fmt, test_data_path, k_folds=5, dset_name_prefix='Fold', save_dir='./plots'):
+    """Evaluate k-fold models on a given test set.
+
+    Model_fmt can be e.g. 'Model_fold{}.pth' (uncalibrated) or
+    'Model_fold{}_calibrated.pth' (temperature-scaled models saved by demo.py).
+    """
     seed = config.SEED
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
@@ -136,11 +143,20 @@ def test_kfold_models(model_dir, model_fmt, test_data_path, k_folds=5, dset_name
     for fold in range(1, k_folds+1):
         model_path = os.path.join(model_dir, model_fmt.format(fold))
         print(f'Loading model for fold {fold}: {model_path}')
-        model = _load_model(model_path)
-        metrics = validate(model, val_loader, save_dir=os.path.join(save_dir, f'fold{fold}'))
+        if not os.path.exists(model_path):
+            print(f'  -> Model file not found, skip this fold.')
+            continue
+        model, T = _load_model(model_path)
+        if T is not None:
+            print(f'  -> Loaded temperature T = {T.item():.4f}')
+        metrics = validate(model, val_loader, save_dir=os.path.join(save_dir, f'fold{fold}'), T=T)
         metrics_list.append(metrics)
         save_metrics_to_txt(metrics, f'./plots/{dset_name_prefix}{fold}')
         print(f'Fold {fold} metrics saved.')
+
+    if not metrics_list:
+        print('No models were evaluated (no files found).')
+        return [], {}
 
     mean_metrics = {}
 
@@ -156,7 +172,7 @@ def test_kfold_models(model_dir, model_fmt, test_data_path, k_folds=5, dset_name
 
 if __name__ == '__main__':
     model_dir = config.PRE_MODEL
-    model_fmt = 'Model_fold{}.pth'
+    model_fmt = 'Model_fold{}_calibrated.pth'
     k_folds = config.K_FOLDS
     test_data_path = config.VAL2
     dset_name_prefix = 'Fold'
