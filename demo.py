@@ -188,19 +188,11 @@ def cross_validate():
         T = fit_T(logits_tensor, targets_tensor.view(-1, 1))
         print(f"[Fold {fold+1}] Fitted temperature T = {T.item():.4f}")
 
-        loss_T, metrics_T, threshold_T = test_T(model, calib_loader, criterion, T)
-        print(f"[Fold {fold+1}] Calibrated metrics on calib set:")
-        for key, val in metrics_T.items():
-            if isinstance(val, (int, float)):
-                print(f"  {key}: {val:.4f}")
-
+        _, _, _ = test_T(model, calib_loader, criterion, T)
         torch.save({
             'model': model.state_dict(),
             'T': T.cpu()
         }, os.path.join(save_dir, f'Model_fold{fold+1}_calibrated.pth'))
-
-    print(f"Cross-validation AUPRCs: {auprc_scores}")
-    print(f"Mean AUPRC: {np.mean(auprc_scores):.4f}")
 
 if __name__ == '__main__':
     # main()

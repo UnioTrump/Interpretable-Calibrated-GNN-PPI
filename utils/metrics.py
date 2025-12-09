@@ -36,14 +36,14 @@ def calculate_metrics(y_true, y_scores, threshold):
     specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
 
     return {
+        'accuracy': accuracy,
+        'mcc': mcc,
         'roc_auc': roc_auc,
         'pr_auc': pr_auc,
-        'accuracy': accuracy,
+        'f1_score': f1,
         'precision': precision,
         'recall': recall,
         'specificity': specificity,
-        'f1_score': f1,
-        'mcc': mcc,
         'threshold': threshold,
         'confusion_matrix': {'tn': tn, 'fp': fp, 'fn': fn, 'tp': tp}
     }
