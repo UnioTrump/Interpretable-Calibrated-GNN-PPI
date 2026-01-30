@@ -1,0 +1,593 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="fc6b1821-464b-485d-8577-cbed6dbd0003" name="更改" comment="add" />
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="CopilotPersistence">
+    <persistenceIdMap>
+      <entry key="_D:/000_code/BioAI/PPI" value="33soFXeroKfv40eK4ze06tEth91" />
+    </persistenceIdMap>
+  </component>
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="Python Script" />
+      </list>
+    </option>
+  </component>
+  <component name="FlaskConsoleOptions" custom-start-script="import sys; print('Python %s on %s' % (sys.version, sys.platform)); sys.path.extend([WORKING_DIR_AND_PYTHON_PATHS])&#10;from flask.cli import ScriptInfo, NoAppException&#10;for module in [&quot;main.py&quot;, &quot;wsgi.py&quot;, &quot;app.py&quot;]:&#10;    try: locals().update(ScriptInfo(app_import_path=module, create_app=None).load_app().make_shell_context()); print(&quot;\nFlask App: %s&quot; % app.import_name); break&#10;    except NoAppException: pass">
+    <envs>
+      <env key="FLASK_APP" value="app" />
+    </envs>
+    <option name="myCustomStartScript" value="import sys; print('Python %s on %s' % (sys.version, sys.platform)); sys.path.extend([WORKING_DIR_AND_PYTHON_PATHS])&#10;from flask.cli import ScriptInfo, NoAppException&#10;for module in [&quot;main.py&quot;, &quot;wsgi.py&quot;, &quot;app.py&quot;]:&#10;    try: locals().update(ScriptInfo(app_import_path=module, create_app=None).load_app().make_shell_context()); print(&quot;\nFlask App: %s&quot; % app.import_name); break&#10;    except NoAppException: pass" />
+    <option name="myEnvs">
+      <map>
+        <entry key="FLASK_APP" value="app" />
+      </map>
+    </option>
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_BRANCH_BY_REPOSITORY">
+      <map>
+        <entry key="$PROJECT_DIR$" value="v20" />
+      </map>
+    </option>
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;UnioTrump&quot;
+  }
+}</component>
+  <component name="GithubDefaultAccount">
+    <option name="defaultAccountId" value="8017e3c6-2395-4470-8382-00052d382c75" />
+  </component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;https://github.com/UnioTrump/PPIs.git&quot;,
+    &quot;accountId&quot;: &quot;8017e3c6-2395-4470-8382-00052d382c75&quot;
+  }
+}</component>
+  <component name="McpProjectServerCommands">
+    <commands />
+    <urls />
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;customColor&quot;: &quot;&quot;,
+  &quot;associatedIndex&quot;: 6
+}</component>
+  <component name="ProjectId" id="33soFXeroKfv40eK4ze06tEth91" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;Python 测试.Python 测试 (demo.py 内).executor&quot;: &quot;Run&quot;,
+    &quot;Python.Data.executor&quot;: &quot;Run&quot;,
+    &quot;Python.Fit_T.executor&quot;: &quot;Run&quot;,
+    &quot;Python.PWAA.executor&quot;: &quot;Run&quot;,
+    &quot;Python.Val.executor&quot;: &quot;Run&quot;,
+    &quot;Python._1从TransformerConv提取注意力图.executor&quot;: &quot;Run&quot;,
+    &quot;Python._2获取模型预测的标签.executor&quot;: &quot;Run&quot;,
+    &quot;Python._3绘制邻接矩阵图.executor&quot;: &quot;Run&quot;,
+    &quot;Python._4注意力图.executor&quot;: &quot;Run&quot;,
+    &quot;Python._5GNNExplainer.executor&quot;: &quot;Run&quot;,
+    &quot;Python._5可解释性.executor&quot;: &quot;Run&quot;,
+    &quot;Python.attn_map.executor&quot;: &quot;Run&quot;,
+    &quot;Python.base.executor&quot;: &quot;Run&quot;,
+    &quot;Python.callabel.executor&quot;: &quot;Run&quot;,
+    &quot;Python.clean.executor&quot;: &quot;Run&quot;,
+    &quot;Python.cleancsv.executor&quot;: &quot;Run&quot;,
+    &quot;Python.compute_sasa.executor&quot;: &quot;Run&quot;,
+    &quot;Python.config.executor&quot;: &quot;Run&quot;,
+    &quot;Python.demo.executor&quot;: &quot;Run&quot;,
+    &quot;Python.get_vdw.executor&quot;: &quot;Run&quot;,
+    &quot;Python.getpdb.executor&quot;: &quot;Run&quot;,
+    &quot;Python.getpdb_chain.executor&quot;: &quot;Run&quot;,
+    &quot;Python.getpdb_label.executor&quot;: &quot;Run&quot;,
+    &quot;Python.improve_model.executor&quot;: &quot;Run&quot;,
+    &quot;Python.kfold_demo.executor&quot;: &quot;Run&quot;,
+    &quot;Python.losses.executor&quot;: &quot;Run&quot;,
+    &quot;Python.split.executor&quot;: &quot;Run&quot;,
+    &quot;Python.visualize_tsne.executor&quot;: &quot;Run&quot;,
+    &quot;Python.注意力图Val.executor&quot;: &quot;Run&quot;,
+    &quot;RunOnceActivity.MCP Project settings loaded&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.typescript.service.memoryLimit.init&quot;: &quot;true&quot;,
+    &quot;SHELLCHECK.PATH&quot;: &quot;我会在意&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;v21&quot;,
+    &quot;ignore.virus.scanning.warn.message&quot;: &quot;true&quot;,
+    &quot;last_opened_file_path&quot;: &quot;D:/000_code/BioAI/PPI&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;vcs.Git&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
+  }
+}</component>
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="D:\000_code\BioAI\PPI" />
+    </key>
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="D:\000_code\BioAI\PPI\model" />
+      <recent name="D:\000_code\BioAI\PPI\GASPPI" />
+    </key>
+  </component>
+  <component name="RunManager" selected="Python.Fit_T">
+    <configuration name="Data" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="PPI" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="RUN_TOOL" value="" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/Data.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="Fit_T" type="PythonConfigurationType" factoryName="Python">
+      <module name="PPI" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="SDK_NAME" value="PPI _Main" />
+      <option name="WORKING_DIRECTORY" value="" />
+      <option name="IS_MODULE_SDK" value="false" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="RUN_TOOL" value="" />
+      <option name="SCRIPT_NAME" value="Fit_T.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="Val" type="PythonConfigurationType" factoryName="Python" nameIsGenerated="true">
+      <module name="PPI" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="SDK_NAME" value="PPI _Spare" />
+      <option name="WORKING_DIRECTORY" value="" />
+      <option name="IS_MODULE_SDK" value="false" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="RUN_TOOL" value="" />
+      <option name="SCRIPT_NAME" value="Val.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="demo" type="PythonConfigurationType" factoryName="Python">
+      <module name="PPI" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="SDK_NAME" value="PPI _Main" />
+      <option name="WORKING_DIRECTORY" value="" />
+      <option name="IS_MODULE_SDK" value="false" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="RUN_TOOL" value="" />
+      <option name="SCRIPT_NAME" value="demo.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="losses" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="PPI" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/utils" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="RUN_TOOL" value="" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/utils/losses.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <list>
+      <item itemvalue="Python.Fit_T" />
+      <item itemvalue="Python.Val" />
+      <item itemvalue="Python.demo" />
+      <item itemvalue="Python.Data" />
+      <item itemvalue="Python.losses" />
+    </list>
+    <recent_temporary>
+      <list>
+        <item itemvalue="Python.Data" />
+        <item itemvalue="Python.losses" />
+      </list>
+    </recent_temporary>
+  </component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-js-predefined-d6986cc7102b-9b0f141eb926-JavaScript-PY-253.29346.308" />
+        <option value="bundled-python-sdk-ca5e2b39c7df-6e1f45a539f7-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-253.29346.308" />
+      </set>
+    </attachedChunks>
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="默认任务">
+      <changelist id="fc6b1821-464b-485d-8577-cbed6dbd0003" name="更改" comment="" />
+      <created>1760115039277</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1760115039277</updated>
+      <workItem from="1760115040944" duration="7050000" />
+      <workItem from="1760158963323" duration="4690000" />
+      <workItem from="1760450763105" duration="6397000" />
+      <workItem from="1760543338583" duration="1885000" />
+      <workItem from="1760872805013" duration="4185000" />
+      <workItem from="1761211184223" duration="1231000" />
+      <workItem from="1761282471917" duration="2509000" />
+      <workItem from="1761287679263" duration="5082000" />
+      <workItem from="1761319243093" duration="4834000" />
+      <workItem from="1761368354329" duration="13558000" />
+      <workItem from="1761389839261" duration="703000" />
+      <workItem from="1761411297264" duration="2901000" />
+      <workItem from="1761418227741" duration="2583000" />
+      <workItem from="1761450932946" duration="5417000" />
+      <workItem from="1761465870898" duration="2154000" />
+      <workItem from="1761474754370" duration="8621000" />
+      <workItem from="1761488220964" duration="4124000" />
+      <workItem from="1761667733633" duration="2368000" />
+      <workItem from="1761732596327" duration="2531000" />
+      <workItem from="1761749093706" duration="5411000" />
+      <workItem from="1761915280220" duration="2471000" />
+      <workItem from="1761920585986" duration="1016000" />
+      <workItem from="1761921619801" duration="6353000" />
+      <workItem from="1761970589588" duration="5809000" />
+      <workItem from="1762162763366" duration="2154000" />
+      <workItem from="1762334139197" duration="1327000" />
+      <workItem from="1762422325906" duration="622000" />
+      <workItem from="1762431422717" duration="5554000" />
+      <workItem from="1762444026659" duration="15432000" />
+      <workItem from="1762534260001" duration="3921000" />
+      <workItem from="1762575475191" duration="61000" />
+      <workItem from="1762585877809" duration="636000" />
+      <workItem from="1762586531127" duration="6876000" />
+      <workItem from="1762594674323" duration="1603000" />
+      <workItem from="1762620089324" duration="11799000" />
+      <workItem from="1762668749490" duration="2312000" />
+      <workItem from="1762700574836" duration="12870000" />
+      <workItem from="1762749579845" duration="1832000" />
+      <workItem from="1762751437920" duration="2163000" />
+      <workItem from="1762767138327" duration="2157000" />
+      <workItem from="1762783042695" duration="12377000" />
+      <workItem from="1762938130852" duration="3176000" />
+      <workItem from="1762963322428" duration="3606000" />
+      <workItem from="1763002029451" duration="9174000" />
+      <workItem from="1763024631086" duration="2393000" />
+      <workItem from="1763033479277" duration="8457000" />
+      <workItem from="1763124513093" duration="2098000" />
+      <workItem from="1763126638571" duration="364000" />
+      <workItem from="1763127038307" duration="2133000" />
+      <workItem from="1763189657474" duration="6321000" />
+      <workItem from="1763216290568" duration="11801000" />
+      <workItem from="1763267532732" duration="8241000" />
+      <workItem from="1763278936727" duration="1979000" />
+      <workItem from="1763280994767" duration="3134000" />
+      <workItem from="1763288414083" duration="25027000" />
+      <workItem from="1763353590623" duration="7190000" />
+      <workItem from="1763398108299" duration="1753000" />
+      <workItem from="1763437214806" duration="11179000" />
+      <workItem from="1763483805831" duration="106000" />
+      <workItem from="1763483932865" duration="7432000" />
+      <workItem from="1763571105359" duration="9316000" />
+      <workItem from="1763642908466" duration="9508000" />
+      <workItem from="1763690808964" duration="902000" />
+      <workItem from="1763691732872" duration="112000" />
+      <workItem from="1763691855068" duration="3060000" />
+      <workItem from="1763728384192" duration="10841000" />
+      <workItem from="1763785803004" duration="4906000" />
+      <workItem from="1763895701055" duration="2602000" />
+      <workItem from="1763899271885" duration="3367000" />
+      <workItem from="1763905644190" duration="5397000" />
+      <workItem from="1763956966098" duration="4042000" />
+      <workItem from="1763968123887" duration="6961000" />
+      <workItem from="1763993548686" duration="8098000" />
+      <workItem from="1764043834945" duration="2187000" />
+      <workItem from="1764085781332" duration="4509000" />
+      <workItem from="1764147165625" duration="1539000" />
+      <workItem from="1764302483259" duration="1059000" />
+      <workItem from="1764303791384" duration="111000" />
+      <workItem from="1764333215388" duration="69000" />
+      <workItem from="1764390135493" duration="1739000" />
+      <workItem from="1764477057716" duration="1307000" />
+      <workItem from="1764478599204" duration="3426000" />
+      <workItem from="1764691634486" duration="1887000" />
+      <workItem from="1764772073269" duration="7566000" />
+      <workItem from="1764821281307" duration="1329000" />
+      <workItem from="1764997702013" duration="19000" />
+      <workItem from="1765000532346" duration="6515000" />
+      <workItem from="1765078802526" duration="2253000" />
+      <workItem from="1765109920135" duration="1901000" />
+      <workItem from="1765112430700" duration="137000" />
+      <workItem from="1765112853284" duration="220000" />
+      <workItem from="1765121505869" duration="2113000" />
+      <workItem from="1765123696309" duration="2361000" />
+      <workItem from="1765127056160" duration="86000" />
+      <workItem from="1765185741707" duration="1624000" />
+      <workItem from="1765187430006" duration="298000" />
+      <workItem from="1765187770671" duration="412000" />
+      <workItem from="1765197485835" duration="51000" />
+      <workItem from="1765197580692" duration="59000" />
+      <workItem from="1765213691157" duration="297000" />
+      <workItem from="1765244961111" duration="665000" />
+      <workItem from="1765295451210" duration="63000" />
+      <workItem from="1765979650933" duration="15000" />
+      <workItem from="1766216639157" duration="7146000" />
+      <workItem from="1766224053580" duration="1984000" />
+      <workItem from="1768049519937" duration="2689000" />
+      <workItem from="1768120788726" duration="24000" />
+      <workItem from="1768294316419" duration="4759000" />
+      <workItem from="1768304009533" duration="4374000" />
+      <workItem from="1768308557442" duration="1872000" />
+      <workItem from="1768310553666" duration="1474000" />
+      <workItem from="1768377511408" duration="5060000" />
+      <workItem from="1768407925471" duration="114000" />
+      <workItem from="1768408073608" duration="607000" />
+      <workItem from="1768408756577" duration="4641000" />
+      <workItem from="1768464273951" duration="2979000" />
+      <workItem from="1768534377677" duration="429000" />
+      <workItem from="1768534848192" duration="126000" />
+      <workItem from="1768534994003" duration="9552000" />
+      <workItem from="1768619041826" duration="12780000" />
+      <workItem from="1768709407716" duration="480000" />
+      <workItem from="1768716456975" duration="967000" />
+      <workItem from="1768718092058" duration="280000" />
+      <workItem from="1768718623901" duration="776000" />
+      <workItem from="1768723049423" duration="4176000" />
+      <workItem from="1768736440845" duration="464000" />
+      <workItem from="1768743094794" duration="1336000" />
+      <workItem from="1768746578020" duration="1731000" />
+      <workItem from="1768748333143" duration="10324000" />
+      <workItem from="1768759199621" duration="3318000" />
+      <workItem from="1768787449448" duration="2143000" />
+      <workItem from="1768825275364" duration="379000" />
+      <workItem from="1768827547070" duration="1690000" />
+      <workItem from="1768878123524" duration="1476000" />
+      <workItem from="1769063649207" duration="21000" />
+      <workItem from="1769405498866" duration="1276000" />
+      <workItem from="1769784862130" duration="1282000" />
+      <workItem from="1769786167901" duration="1613000" />
+    </task>
+    <task id="LOCAL-00001" summary="V15">
+      <option name="closed" value="true" />
+      <created>1761282558052</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1761282558052</updated>
+    </task>
+    <task id="LOCAL-00002" summary="V16">
+      <option name="closed" value="true" />
+      <created>1761916443360</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1761916443361</updated>
+    </task>
+    <task id="LOCAL-00003" summary="V17">
+      <option name="closed" value="true" />
+      <created>1762620152134</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1762620152134</updated>
+    </task>
+    <task id="LOCAL-00004" summary="V18">
+      <option name="closed" value="true" />
+      <created>1763005021236</created>
+      <option name="number" value="00004" />
+      <option name="presentableId" value="LOCAL-00004" />
+      <option name="project" value="LOCAL" />
+      <updated>1763005021236</updated>
+    </task>
+    <task id="LOCAL-00005" summary="V18">
+      <option name="closed" value="true" />
+      <created>1763269334623</created>
+      <option name="number" value="00005" />
+      <option name="presentableId" value="LOCAL-00005" />
+      <option name="project" value="LOCAL" />
+      <updated>1763269334623</updated>
+    </task>
+    <task id="LOCAL-00006" summary="V19">
+      <option name="closed" value="true" />
+      <created>1763305427864</created>
+      <option name="number" value="00006" />
+      <option name="presentableId" value="LOCAL-00006" />
+      <option name="project" value="LOCAL" />
+      <updated>1763305427864</updated>
+    </task>
+    <task id="LOCAL-00007" summary="V19">
+      <option name="closed" value="true" />
+      <created>1763616711800</created>
+      <option name="number" value="00007" />
+      <option name="presentableId" value="LOCAL-00007" />
+      <option name="project" value="LOCAL" />
+      <updated>1763616711800</updated>
+    </task>
+    <task id="LOCAL-00008" summary="V20">
+      <option name="closed" value="true" />
+      <created>1763655345662</created>
+      <option name="number" value="00008" />
+      <option name="presentableId" value="LOCAL-00008" />
+      <option name="project" value="LOCAL" />
+      <updated>1763655345662</updated>
+    </task>
+    <task id="LOCAL-00009" summary="V20">
+      <option name="closed" value="true" />
+      <created>1764303874493</created>
+      <option name="number" value="00009" />
+      <option name="presentableId" value="LOCAL-00009" />
+      <option name="project" value="LOCAL" />
+      <updated>1764303874493</updated>
+    </task>
+    <task id="LOCAL-00010" summary="v21">
+      <option name="closed" value="true" />
+      <created>1765127121311</created>
+      <option name="number" value="00010" />
+      <option name="presentableId" value="LOCAL-00010" />
+      <option name="project" value="LOCAL" />
+      <updated>1765127121311</updated>
+    </task>
+    <task id="LOCAL-00011" summary="v21">
+      <option name="closed" value="true" />
+      <created>1765213887205</created>
+      <option name="number" value="00011" />
+      <option name="presentableId" value="LOCAL-00011" />
+      <option name="project" value="LOCAL" />
+      <updated>1765213887205</updated>
+    </task>
+    <task id="LOCAL-00012" summary="v21">
+      <option name="closed" value="true" />
+      <created>1765245572145</created>
+      <option name="number" value="00012" />
+      <option name="presentableId" value="LOCAL-00012" />
+      <option name="project" value="LOCAL" />
+      <updated>1765245572145</updated>
+    </task>
+    <task id="LOCAL-00013" summary="v21">
+      <option name="closed" value="true" />
+      <created>1769785974332</created>
+      <option name="number" value="00013" />
+      <option name="presentableId" value="LOCAL-00013" />
+      <option name="project" value="LOCAL" />
+      <updated>1769785974332</updated>
+    </task>
+    <option name="localTasksCounter" value="14" />
+    <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State />
+          </value>
+        </entry>
+      </map>
+    </option>
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="v15" />
+    <MESSAGE value="V15" />
+    <MESSAGE value="V16" />
+    <MESSAGE value="V17" />
+    <MESSAGE value="V18" />
+    <MESSAGE value="V19" />
+    <MESSAGE value="V20" />
+    <MESSAGE value="v21" />
+    <option name="LAST_COMMIT_MESSAGE" value="v21" />
+    <option name="LAST_CHUNK_COMMIT_MESSAGE" value="v21" />
+  </component>
+  <component name="com.intellij.coverage.CoverageDataManagerImpl">
+    <SUITE FILE_PATH="coverage/PPI$compute_sasa.coverage" NAME="compute_sasa 覆盖结果" MODIFIED="1761481458195" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/PPI$losses.coverage" NAME="losses 覆盖结果" MODIFIED="1762624928946" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/utils" />
+    <SUITE FILE_PATH="coverage/PPI$_5GNNExplainer.coverage" NAME="_5GNNExplainer 覆盖结果" MODIFIED="1768466452287" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/paper_test" />
+    <SUITE FILE_PATH="coverage/PPI$_4.coverage" NAME="_4注意力图 覆盖结果" MODIFIED="1768879457008" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/paper_test" />
+    <SUITE FILE_PATH="coverage/PPI$.coverage" NAME=" 覆盖结果" MODIFIED="1761752783552" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/PPI$demo.coverage" NAME="demo 覆盖结果" MODIFIED="1768736764790" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/PPI$cleancsv.coverage" NAME="cleancsv 覆盖结果" MODIFIED="1761469313689" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/PPI$callabel.coverage" NAME="callabel 覆盖结果" MODIFIED="1761420540491" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
+    <SUITE FILE_PATH="coverage/PPI$_3.coverage" NAME="_3绘制邻接矩阵图 覆盖结果" MODIFIED="1768052435112" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/paper_test" />
+    <SUITE FILE_PATH="coverage/PPI$visualize_tsne.coverage" NAME="visualize_tsne 覆盖结果" MODIFIED="1768879344274" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/PPI$clean.coverage" NAME="clean 覆盖结果" MODIFIED="1761479848658" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/PPI$getpdb_label.coverage" NAME="getpdb_label 覆盖结果" MODIFIED="1761461019345" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/PPI$Data.coverage" NAME="Data 覆盖结果" MODIFIED="1763652780282" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/PPI$attn_map.coverage" NAME="attn_map 覆盖结果" MODIFIED="1766222387936" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/paper_test" />
+    <SUITE FILE_PATH="coverage/PPI$getpdb.coverage" NAME="getpdb 覆盖结果" MODIFIED="1761481408158" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/PPI$_2.coverage" NAME="_2获取模型预测的标签 覆盖结果" MODIFIED="1766225798625" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/paper_test" />
+    <SUITE FILE_PATH="coverage/PPI$_5.coverage" NAME="_5可解释性 覆盖结果" MODIFIED="1768878795869" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/paper_test" />
+    <SUITE FILE_PATH="coverage/PPI$improve_model.coverage" NAME="improve_model 覆盖结果" MODIFIED="1762705604938" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/model" />
+    <SUITE FILE_PATH="coverage/PPI$getpdb_chain.coverage" NAME="getpdb_chain 覆盖结果" MODIFIED="1761466428661" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/PPI$PWAA.coverage" NAME="PWAA 覆盖结果" MODIFIED="1761749420318" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/PPI$_1TransformerConv.coverage" NAME="_1从TransformerConv提取注意力图 覆盖结果" MODIFIED="1766224675014" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/paper_test" />
+    <SUITE FILE_PATH="coverage/PPI$config.coverage" NAME="config 覆盖结果" MODIFIED="1762705551622" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/PPI$base.coverage" NAME="base 覆盖结果" MODIFIED="1762447335970" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/model" />
+    <SUITE FILE_PATH="coverage/PPI$Val.coverage" NAME="Val 覆盖结果" MODIFIED="1768828616980" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/PPI$Fit_T.coverage" NAME="Fit_T 覆盖结果" MODIFIED="1765080719818" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
+    <SUITE FILE_PATH="coverage/PPI$split.coverage" NAME="split 覆盖结果" MODIFIED="1761478773015" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/PPI$kfold_demo.coverage" NAME="kfold_demo 覆盖结果" MODIFIED="1763311190442" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/PPI$get_vdw.coverage" NAME="get_vdw 覆盖结果" MODIFIED="1763969528288" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+  </component>
+  <component name="github-copilot-workspace">
+    <instructionFileLocations>
+      <option value=".github/instructions" />
+    </instructionFileLocations>
+    <promptFileLocations>
+      <option value=".github/prompts" />
+    </promptFileLocations>
+  </component>
+</project>
