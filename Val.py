@@ -78,46 +78,6 @@ def draw(y_true, y_pred, save_dir='./plots'):
     plt.close()
     print(f"✓ Plots saved to {save_dir}/")
 
-def validate_from_config(data_path, dset_name, model_path=None, draw_plots=True, save_dir='./plots'):
-    seed = config.SEED
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    np.random.seed(seed)
-    data_loader = PPIData()
-    all_proteins = data_loader.load_data(data_path)
-    val_dataset = PPIDataset(all_proteins, sample_ratio=2, is_training=False)
-    val_loader = DataLoader(
-        val_dataset,
-        batch_size=1,
-        shuffle=False,
-        collate_fn=sparse_collate,
-        pin_memory=True
-    )
-    print(f'Validation dataset size: {len(val_dataset)}')
-    if model_path is None:
-        model_path = os.path.join(config.PRE_MODEL, 'Model.pth')
-    model, T = _load_model(model_path)
-    print(f'Model loaded from {model_path}')
-    if T is not None:
-        print(f'Loaded temperature T = {T.item():.4f}')
-    metrics = validate(model, val_loader, save_dir=save_dir, T=T)
-    print('\n' + '=' * 50)
-    print(f'Evaluation Results for {dset_name}')
-    print('=' * 50)
-    for key, val in metrics.items():
-        if isinstance(val, (int, float)):
-            print(f"  {key.replace('_', ' ').title()}: {val:.4f}")
-        elif isinstance(val, dict):
-            print(f"  {key.replace('_', ' ').title()}:")
-            for sub_key, sub_val in val.items():
-                print(f"    {sub_key.upper()}: {sub_val}")
-        else:
-            print(f"  {key.replace('_', ' ').title()}: {val}")
-    print('=' * 50 + '\n')
-    save_metrics_to_txt(metrics, dset_name)
-    print(f'✓ Metrics saved for {dset_name}')
-    return metrics
-
 def test_kfold_models(model_dir, model_fmt, test_data_path, k_folds=5, dset_name_prefix='Fold', save_dir='./plots'):
     """Evaluate k-fold models on a given test set.
 
