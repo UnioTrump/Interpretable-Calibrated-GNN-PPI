@@ -8,7 +8,7 @@ import config
 from Data import PPIData, PPIDataset, sparse_collate
 from torch.utils.data import DataLoader
 from sklearn.model_selection import KFold
-from Fit_T import fit_T, test_T, test as test_T_func
+from Fit_T import fit_T, test_T, getlogits
 import os
 
 device = config.DEVICE
@@ -58,7 +58,7 @@ def train(model, train_loader, optimizer, loss_fun):
     return total_loss / len(train_loader)
 
 @torch.no_grad()
-def test(model, val_loader, loss_fun):
+def validata(model, val_loader, loss_fun):
     model.eval()
     total_loss = 0
     all_probs, all_targets = [], []
@@ -146,7 +146,7 @@ def cross_validate():
         epoch_iter = tqdm(range(config.EPOCHS), desc=f"Fold {fold+1}", ncols=180)
         for epoch in epoch_iter:
             train_loss = train(model, train_loader, optimizer, criterion)
-            val_loss, metrics, _ = test(model, val_loader, criterion)
+            val_loss, metrics, _ = validata(model, val_loader, criterion)
 
             train_losses.append(train_loss)
             val_losses.append(val_loss)
@@ -183,15 +183,17 @@ def cross_validate():
         best_model_path = os.path.join(save_dir, f'Model_fold{fold+1}.pth')
         model.load_state_dict(torch.load(best_model_path, map_location=device))
         model.eval()
+        calib_loader = val_loader       # Note: Using Validate Dataset Calibrating model.
 
-        calib_loss, calib_metrics, _, logits_tensor, targets_tensor = test_T_func(model, calib_loader, criterion)
-        T = fit_T(logits_tensor, targets_tensor.view(-1, 1))
+        logits, targets = getlogits(model, calib_loader, criterion)
+        T = fit_T(logits, targets.view(-1, 1))
         print(f"[Fold {fold+1}] Fitted temperature T = {T.item():.4f}")
 
-        _, _, _ = test_T(model, calib_loader, criterion, T)
+        r = test_T(logits,targets, T)
         torch.save({
             'model': model.state_dict(),
-            'T': T.cpu()
+            'T': T.cpu(),
+            'threshold': r.cpu()
         }, os.path.join(save_dir, f'Model_fold{fold+1}_calibrated.pth'))
 
 if __name__ == '__main__':

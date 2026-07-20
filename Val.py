@@ -18,7 +18,7 @@ def _load_model(model_path):
     model = PPI(hid_dim=config.gcn_hid_dim, heads=config.HEADS, dropout=config.DROPOUT).to(device)
     model.load_state_dict(checkpoint['model'])
     T = checkpoint['T'].to(device)
-    r = checkpoint['r'].to(device)
+    r = checkpoint['threshold'].to(device)
     return model, T, r
 
 @torch.no_grad()
@@ -91,7 +91,7 @@ def test_kfold_models(model_dir, model_fmt, test_data_path, k_folds=5, dset_name
     np.random.seed(seed)
     data_loader = PPIData()
     all_proteins = data_loader.load_data(test_data_path)
-    val_dataset = PPIDataset(all_proteins, sample_ratio=2, is_training=False)
+    val_dataset = PPIDataset(all_proteins)
     val_loader = DataLoader(
         val_dataset,
         batch_size=1,
@@ -110,6 +110,8 @@ def test_kfold_models(model_dir, model_fmt, test_data_path, k_folds=5, dset_name
         model, T, r = _load_model(model_path)
         if T is not None:
             print(f'  -> Loaded temperature T = {T.item():.4f}')
+        print(f'  -> Loaded threshold   r = {r.item():.4f}')
+
         metrics = validate(model, val_loader, save_dir=os.path.join(save_dir, f'fold{fold}'), T=T, r=r)
         metrics_list.append(metrics)
         # save_metrics_to_txt(metrics, f'./plots/{dset_name_prefix}{fold}')

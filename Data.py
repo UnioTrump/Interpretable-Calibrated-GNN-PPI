@@ -17,10 +17,8 @@ device = 'cpu'
 
 class PPIDataset(Dataset):
 
-    def __init__(self, data_list, is_training, sample_ratio=2):
+    def __init__(self, data_list):
         self.data_list = data_list
-        self.sample_ratio = sample_ratio
-        self.is_training = is_training
         self.device = device
         self.samples = []
         self._prepare_val()

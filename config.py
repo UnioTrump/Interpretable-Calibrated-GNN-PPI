@@ -3,7 +3,7 @@ import torch
 DEVICE = torch.device('cuda:0')
 SEED = 2025
 
-DATA_DIR = '../data/Train2066/'
+DATA_DIR = '../data/Train_1960/'
 VAL1 = '../data/Test_60/'
 VAL2 = '../data/Test_315/'
 VAL3 = '../data/DSet_72/'
@@ -30,7 +30,7 @@ Tversky_WEIGHT = 0.7
 
 F_BETA = 0.7
 
-PRE_MODEL = '/../data/Saved_model'
+PRE_MODEL = '/../data/Pre_model'
 TUNING_MODEL = '/../data/Tuning_model'
 PLOT_DIR = '/../data/plots'
 
