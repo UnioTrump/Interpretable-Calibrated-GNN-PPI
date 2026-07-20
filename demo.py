@@ -175,7 +175,6 @@ def cross_validate():
                 "patience": f"{patience_counter}",
             })
 
-
         plot_loss_curves(train_losses, val_losses, save_path=f"plots/loss_curve_fold{fold+1}.png")
         print(f"Fold {fold+1}: Best AUPRC = {best_auprc:.4f}")
         auprc_scores.append(best_auprc)
