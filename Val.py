@@ -1,17 +1,14 @@
 import torch
 import os
-from utils import calculate_metrics, find_best_threshold_by_f_beta, save_metrics_to_txt
+from utils import calculate_metrics, draw
 from model import PPI
 import config
 from tqdm import tqdm
 from Data import PPIData, PPIDataset, sparse_collate
 import numpy as np
-from sklearn.metrics import roc_curve, auc, precision_recall_curve, average_precision_score
 from torch.utils.data import DataLoader
-import matplotlib.pyplot as plt
 
 device = config.DEVICE
-
 
 def _load_model(model_path):
     checkpoint = torch.load(model_path, map_location=device)
@@ -44,40 +41,6 @@ def validate(model, val_loader, draw_plots=False, save_dir='./plots', T=None, r=
         draw(all_targets_tensor.numpy(), all_probs_tensor.numpy(), save_dir=save_dir)
     return metrics
 
-def draw(y_true, y_pred, save_dir='./plots'):
-    os.makedirs(save_dir, exist_ok=True)
-    # ========== ROC 曲线 ==========
-    fpr, tpr, _ = roc_curve(y_true, y_pred)
-    roc_auc = auc(fpr, tpr)
-    plt.figure(figsize=(8, 6))
-    plt.plot(fpr, tpr, color='blue', lw=2, label=f'ROC curve (AUC = {roc_auc:.3f})')
-    plt.plot([0, 1], [0, 1], color='gray', lw=1, linestyle='--', label='Random Classifier')
-    plt.xlim([0.0, 1.0])
-    plt.ylim([0.0, 1.05])
-    plt.xlabel('False Positive Rate', fontsize=12)
-    plt.ylabel('True Positive Rate', fontsize=12)
-    plt.title('Receiver Operating Characteristic (ROC) Curve', fontsize=14)
-    plt.legend(loc="lower right")
-    plt.grid(alpha=0.3)
-    plt.tight_layout()
-    plt.savefig(os.path.join(save_dir, 'roc_curve.png'), dpi=300, bbox_inches='tight')
-    plt.close()
-    # ========== PR 曲线 ==========
-    precision, recall, _ = precision_recall_curve(y_true, y_pred)
-    auprc = average_precision_score(y_true, y_pred)
-    plt.figure(figsize=(8, 6))
-    plt.plot(recall, precision, color='blue', lw=2, label=f'PR curve (AUPRC = {auprc:.3f})')
-    plt.xlim([0.0, 1.0])
-    plt.ylim([0.0, 1.05])
-    plt.xlabel('Recall', fontsize=12)
-    plt.ylabel('Precision', fontsize=12)
-    plt.title('Precision-Recall Curve', fontsize=14)
-    plt.legend(loc="lower left")
-    plt.grid(alpha=0.3)
-    plt.tight_layout()
-    plt.savefig(os.path.join(save_dir, 'pr_curve.png'), dpi=300, bbox_inches='tight')
-    plt.close()
-    print(f"✓ Plots saved to {save_dir}/")
 
 def test_kfold_models(model_dir, model_fmt, test_data_path, k_folds=5, dset_name_prefix='Fold', save_dir='./plots'):
     """Evaluate k-fold models on a given test set.

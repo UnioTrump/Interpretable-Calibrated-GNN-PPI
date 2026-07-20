@@ -2,6 +2,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 from datetime import datetime
+from sklearn.metrics import roc_curve, auc, precision_recall_curve, average_precision_score
 
 def plot_loss_curves(train_losses, val_losses, save_path='loss_curves.png'):
     save_dir = os.path.dirname(save_path)
@@ -49,3 +50,38 @@ def save_metrics_to_txt(metrics, Dset_name):
         f.write(f"Saved at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
     
     print(f"Metrics saved to: {file}")
+
+def draw(y_true, y_pred, save_dir='./plots'):
+    os.makedirs(save_dir, exist_ok=True)
+    # ========== ROC 曲线 ==========
+    fpr, tpr, _ = roc_curve(y_true, y_pred)
+    roc_auc = auc(fpr, tpr)
+    plt.figure(figsize=(8, 6))
+    plt.plot(fpr, tpr, color='blue', lw=2, label=f'ROC curve (AUC = {roc_auc:.3f})')
+    plt.plot([0, 1], [0, 1], color='gray', lw=1, linestyle='--', label='Random Classifier')
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate', fontsize=12)
+    plt.ylabel('True Positive Rate', fontsize=12)
+    plt.title('Receiver Operating Characteristic (ROC) Curve', fontsize=14)
+    plt.legend(loc="lower right")
+    plt.grid(alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, 'roc_curve.png'), dpi=300, bbox_inches='tight')
+    plt.close()
+    # ========== PR 曲线 ==========
+    precision, recall, _ = precision_recall_curve(y_true, y_pred)
+    auprc = average_precision_score(y_true, y_pred)
+    plt.figure(figsize=(8, 6))
+    plt.plot(recall, precision, color='blue', lw=2, label=f'PR curve (AUPRC = {auprc:.3f})')
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('Recall', fontsize=12)
+    plt.ylabel('Precision', fontsize=12)
+    plt.title('Precision-Recall Curve', fontsize=14)
+    plt.legend(loc="lower left")
+    plt.grid(alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, 'pr_curve.png'), dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"✓ Plots saved to {save_dir}/")
