@@ -147,7 +147,8 @@ def main():
             save_path = os.path.join(config.PRE_MODEL, f'{fold_name}_calibrated.pth')
         torch.save({
             'model': model.state_dict(),
-            'T': T.cpu()
+            'T': T.cpu(),
+            'r': threshold
         }, save_path)
         print(f'Calibrated model saved to {save_path}')
         print('=' * 50)

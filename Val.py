@@ -18,10 +18,11 @@ def _load_model(model_path):
     model = PPI(hid_dim=config.gcn_hid_dim, heads=config.HEADS, dropout=config.DROPOUT).to(device)
     model.load_state_dict(checkpoint['model'])
     T = checkpoint['T'].to(device)
-    return model, T
+    r = checkpoint['r'].to(device)
+    return model, T, r
 
 @torch.no_grad()
-def validate(model, val_loader, draw_plots=True, save_dir='./plots', T=None):
+def validate(model, val_loader, draw_plots=False, save_dir='./plots', T=None, r=None):
     model.eval()
     all_prob, all_target = [], []
     for batch in tqdm(val_loader, desc='Validating'):
@@ -37,7 +38,7 @@ def validate(model, val_loader, draw_plots=True, save_dir='./plots', T=None):
         all_target.append(batch['y'].float().detach().cpu())
     all_targets_tensor = torch.cat(all_target, dim=0)
     all_probs_tensor = torch.cat(all_prob, dim=0)
-    threshold, _ = find_best_threshold_by_f_beta(all_targets_tensor, all_probs_tensor, num_threshold=100)
+    threshold = r
     metrics = calculate_metrics(y_true=all_targets_tensor, y_scores=all_probs_tensor, threshold=threshold)
     if draw_plots:
         draw(all_targets_tensor.numpy(), all_probs_tensor.numpy(), save_dir=save_dir)
@@ -106,13 +107,13 @@ def test_kfold_models(model_dir, model_fmt, test_data_path, k_folds=5, dset_name
         if not os.path.exists(model_path):
             print(f'  -> Model file not found, skip this fold.')
             continue
-        model, T = _load_model(model_path)
+        model, T, r = _load_model(model_path)
         if T is not None:
             print(f'  -> Loaded temperature T = {T.item():.4f}')
-        metrics = validate(model, val_loader, save_dir=os.path.join(save_dir, f'fold{fold}'), T=T)
+        metrics = validate(model, val_loader, save_dir=os.path.join(save_dir, f'fold{fold}'), T=T, r=r)
         metrics_list.append(metrics)
-        save_metrics_to_txt(metrics, f'./plots/{dset_name_prefix}{fold}')
-        print(f'Fold {fold} metrics saved.')
+        # save_metrics_to_txt(metrics, f'./plots/{dset_name_prefix}{fold}')
+        # print(f'Fold {fold} metrics saved.')
 
     if not metrics_list:
         print('No models were evaluated (no files found).')
@@ -134,9 +135,9 @@ if __name__ == '__main__':
     model_dir = config.PRE_MODEL
     model_fmt = 'Model_fold{}_calibrated.pth'
     k_folds = config.K_FOLDS
-    test_data_path = config.VAL2
+    test_data_path = config.VAL3
     dset_name_prefix = 'Fold'
-    save_dir = './plots'
+    save_dir = config.PLOT_DIR
     print(f"Auto k-fold evaluation: model_dir={model_dir}, model_fmt={model_fmt}, k_folds={k_folds}, test_data_path={test_data_path}")
     test_kfold_models(
         model_dir=model_dir,

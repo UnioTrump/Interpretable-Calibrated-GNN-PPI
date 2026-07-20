@@ -3,11 +3,12 @@ import torch
 DEVICE = torch.device('cuda:0')
 SEED = 2025
 
-DATA_DIR = '../gz-data/Train2066/'
-VAL1 = '../gz-data/Test60/'
-VAL2 = '../gz-data/Test315/'
-VAL3 = '../gz-data/Train362/'
-VAL4 = '../gz-data/UBtest31/'
+DATA_DIR = '../data/Train2066/'
+VAL1 = '../data/Test_60/'
+VAL2 = '../data/Test_315/'
+VAL3 = '../data/DSet_72/'
+VAL4 = '../data/DSet_164/'
+VAL5 = '../data/DSet_186/'
 
 NUM_LAYER = 4
 HEADS = 8
@@ -29,9 +30,9 @@ Tversky_WEIGHT = 0.7
 
 F_BETA = 0.7
 
-PRE_MODEL = '/../gz-data/TRAINING_OUTPUT/Saved_model'
-TUNING_MODEL = '/../gz-data/TRAINING_OUTPUT/Tuning_model'
-PLOT_DIR = '/../gz-data/TRAINING_OUTPUT/plots'
+PRE_MODEL = '/../data/Saved_model'
+TUNING_MODEL = '/../data/Tuning_model'
+PLOT_DIR = '/../data/plots'
 
 T_MAX = EPOCHS
 ETA_MIN = 1e-6

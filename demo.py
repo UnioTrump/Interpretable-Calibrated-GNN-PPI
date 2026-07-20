@@ -146,7 +146,7 @@ def cross_validate():
         epoch_iter = tqdm(range(config.EPOCHS), desc=f"Fold {fold+1}", ncols=180)
         for epoch in epoch_iter:
             train_loss = train(model, train_loader, optimizer, criterion)
-            val_loss, metrics, best_threshold = test(model, val_loader, criterion)
+            val_loss, metrics, _ = test(model, val_loader, criterion)
 
             train_losses.append(train_loss)
             val_losses.append(val_loss)
