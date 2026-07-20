@@ -23,7 +23,7 @@ PATIENCE = 8
 K_FOLDS = 5
 
 A = 0.3     #wight of FP
-B = 0.97      #weght of FN
+B = 0.97      #weight of FN
 BCE_WEIGHT = 0.3
 FOCAL_WEIGHT = 0
 Tversky_WEIGHT = 0.7
