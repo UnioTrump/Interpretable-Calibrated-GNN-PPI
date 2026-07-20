@@ -1,13 +1,13 @@
 from torch import nn
 import torch
-from utils import calculate_metrics, find_best_threshold_by_f_beta, HybridLoss
+from utils import find_best_threshold_by_f_beta
 import config
 from tqdm import tqdm
 
 device = config.DEVICE
 
 @torch.no_grad()
-def getlogits(model, val_loader, loss_fun):
+def getlogits(model, val_loader):
     model.eval()
     logits, targets = [], []
     for batch in tqdm(val_loader, total=len(val_loader)):
@@ -36,8 +36,8 @@ def test_T(logits, targets, T):
     cal_logits = logits / T
     probs = torch.sigmoid(cal_logits)
 
-    threshold, _ = find_best_threshold_by_f_beta(targets, probs, num_threshold=100)
-    # metrics = calculate_metrics(y_true=targets, y_scores=probs, threshold=threshold)
+    threshold = find_best_threshold_by_f_beta(targets, probs, num_threshold=100)
+
     return threshold
 
 class Temp(nn.Module):

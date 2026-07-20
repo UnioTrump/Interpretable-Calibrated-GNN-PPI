@@ -75,11 +75,40 @@ def validata(model, val_loader, loss_fun):
     avg_loss = total_loss / len(val_loader)
     targets_tensor = torch.cat(all_targets, dim=0)
     probs_tensor = torch.cat(all_probs, dim=0)
-    threshold, _ = find_best_threshold_by_f_beta(targets_tensor, probs_tensor, num_threshold=100)
+    threshold = find_best_threshold_by_f_beta(targets_tensor, probs_tensor, num_threshold=100)
     metrics = calculate_metrics(y_true=targets_tensor, y_scores=probs_tensor, threshold=threshold)
     return avg_loss, metrics, threshold
 
+@torch.no_grad()
+def test(model, test_loader, loss_fun, T, threshold):
+    model.eval()
+    total_loss = 0
+    all_probs, all_targets = [], []
+    for batch in test_loader:
+        batch = {
+            k: v.to(config.DEVICE) if (torch.is_tensor(v) or hasattr(v, 'to')) else v
+            for k, v in batch.items()
+        }
+        out = model(ax=batch['AA'], bx=batch['esm_c'], cx=batch['dssp'], dx=batch['BLOSUM'],ex=batch['pse'],fx=batch['res_atom'], adj=batch['adj'])
+        if T is not None:
+            out = out / T
+        loss = loss_fun(out, batch['y'])
+        total_loss += loss.item()
+        all_probs.append(torch.sigmoid(out))
+        all_targets.append(batch['y'].float())
+    avg_loss = total_loss / len(test_loader)
+    targets = torch.cat(all_targets, dim=0)
+    probs = torch.cat(all_probs, dim=0)
+    metrics = calculate_metrics(y_true=targets, y_scores=probs, threshold=threshold)
+    return avg_loss, metrics
+
 def cross_validate():
+    """
+        The dataset is divided into an 8:1:1 ratio,
+        serving as the training set, calibration set, and test set, respectively.
+        To prevent underfitting caused by a small dataset,
+        K-Fold cross-validation was performed on the training set.
+    """
     all_proteins = PPIData.load_data(config.DATA_DIR)
 
     train_all, test_all, calib_all = PPIData.split_data(
@@ -88,10 +117,26 @@ def cross_validate():
         test_ratio=0.1,
         seed=config.SEED,
     )
+
+    calib_dataset = PPIDataset(calib_all)
+    test_dataset = PPIDataset(test_all)
+
+    calib_loader = DataLoader(
+        calib_dataset,
+        batch_size=1,
+        shuffle=False,
+        collate_fn=sparse_collate
+    )
+
+    test_loader = DataLoader(
+        test_dataset,
+        batch_size=1,
+        shuffle=False,
+        collate_fn=sparse_collate
+    )
+
     print(f"Total samples: {len(all_proteins)} | Train: {len(train_all)} | Test: {len(test_all)} | Calib: {len(calib_all)}")
 
-    calib_dataset = PPIDataset(calib_all, is_training=False)
-    calib_loader = DataLoader(calib_dataset, batch_size=1, shuffle=False, collate_fn=sparse_collate)
 
     kf = KFold(n_splits=config.K_FOLDS, shuffle=True, random_state=config.SEED)
     auprc_scores = []
@@ -101,8 +146,8 @@ def cross_validate():
         fold_train_data = train_array[train_idx].tolist()
         fold_val_data = train_array[val_idx].tolist()
 
-        fold_train_data = PPIDataset(fold_train_data, is_training=False)
-        fold_val_data = PPIDataset(fold_val_data, is_training=False)
+        fold_train_data = PPIDataset(fold_train_data)
+        fold_val_data = PPIDataset(fold_val_data)
 
         torch.cuda.manual_seed_all(config.SEED)
         np.random.seed(config.SEED)
@@ -183,17 +228,36 @@ def cross_validate():
         best_model_path = os.path.join(save_dir, f'Model_fold{fold+1}.pth')
         model.load_state_dict(torch.load(best_model_path, map_location=device))
         model.eval()
-        calib_loader = val_loader       # Note: Using Validate Dataset Calibrating model.
 
-        logits, targets = getlogits(model, calib_loader, criterion)
+        # ===== Calibration =====
+        logits, targets = getlogits(model, calib_loader)
+
         T = fit_T(logits, targets.view(-1, 1))
-        print(f"[Fold {fold+1}] Fitted temperature T = {T.item():.4f}")
+        print(f"[Fold {fold + 1}] Fitted temperature T = {T.item():.4f}")
 
-        r = test_T(logits,targets, T)
+        cal_metrics, threshold = test_T(logits, targets, T)
+
+        print(
+            f"[Fold {fold + 1}] Calibration: "
+            f"F1={cal_metrics['f1']:.4f}, "
+            f"Threshold={threshold:.4f}"
+        )
+
+        # === Test ===
+        test_loss, test_metrics = test(model, test_loader, criterion, T, threshold)
+
+        print(
+            f"[Fold {fold + 1}], "
+            f"ACC={test_metrics['accuracy']:.4f}, "
+            f"Test AUPRC={test_metrics['pr_auc']:.4f}, "
+            f"AUROC={test_metrics['roc_auc']:.4f}, "
+            f"F1={test_metrics['f1']:.4f}"
+        )
+
         torch.save({
             'model': model.state_dict(),
             'T': T.cpu(),
-            'threshold': r.cpu()
+            'threshold': threshold.cpu()
         }, os.path.join(save_dir, f'Model_fold{fold+1}_calibrated.pth'))
 
 if __name__ == '__main__':

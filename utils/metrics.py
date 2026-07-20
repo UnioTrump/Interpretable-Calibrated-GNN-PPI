@@ -80,8 +80,8 @@ def find_best_threshold_by_f_beta(y_true, y_scores, num_threshold, beta=config.F
 
     best_idx = np.argmax(f_beta_values)
     best_threshold = thresholds[best_idx]
-    best_f_beta = f_beta_values[best_idx]
-    return best_threshold, best_f_beta
+
+    return best_threshold
 
 
 def find_best_threshold_by_accuracy(y_true, y_scores, num_thresholds=200, refine=True):
