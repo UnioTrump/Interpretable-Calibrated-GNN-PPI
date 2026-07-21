@@ -16,7 +16,7 @@ DROPOUT = 0.2
 gcn_hid_dim = 128
 
 EPOCHS = 100
-BATCH_SIZE = 32
+BATCH_SIZE = 64
 LEARNING_RATE = 5e-4
 WEIGHT_DECAY = 4e-4
 PATIENCE = 8
@@ -24,7 +24,7 @@ K_FOLDS = 5
 
 A = 0.3     #wight of FP
 B = 0.97      #weight of FN
-BCE_WEIGHT = 0.3
+BCE_WEIGHT = 0.2
 FOCAL_WEIGHT = 0
 Tversky_WEIGHT = 0.7
 

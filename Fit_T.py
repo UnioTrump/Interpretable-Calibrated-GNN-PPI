@@ -56,7 +56,7 @@ class Temp(nn.Module):
 def fit_T(logits, labels):
     scaler = Temp().to(device)
     optimizer_T = torch.optim.LBFGS(scaler.parameters(), lr=config.LEARNING_RATE, max_iter=50)
-    criterion = nn.BCEWithLogitsLoss()
+    criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(0.1))
     def closure():
         optimizer_T.zero_grad()
         scaled_logits = scaler(logits)

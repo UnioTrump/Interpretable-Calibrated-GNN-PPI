@@ -11,11 +11,11 @@ from torch.utils.data import DataLoader
 device = config.DEVICE
 
 def _load_model(model_path):
-    checkpoint = torch.load(model_path, map_location=device)
+    checkpoint = torch.load(model_path, map_location=device, weights_only=False)
     model = PPI(hid_dim=config.gcn_hid_dim, heads=config.HEADS, dropout=config.DROPOUT).to(device)
     model.load_state_dict(checkpoint['model'])
     T = checkpoint['T'].to(device)
-    r = checkpoint['threshold'].to(device)
+    r = checkpoint['threshold']
     return model, T, r
 
 @torch.no_grad()
@@ -73,7 +73,7 @@ def test_kfold_models(model_dir, model_fmt, test_data_path, k_folds=5, dset_name
         model, T, r = _load_model(model_path)
         if T is not None:
             print(f'  -> Loaded temperature T = {T.item():.4f}')
-        print(f'  -> Loaded threshold   r = {r.item():.4f}')
+        print(f'  -> Loaded threshold   r = {r:.4f}')
 
         metrics = validate(model, val_loader, save_dir=os.path.join(save_dir, f'fold{fold}'), T=T, r=r)
         metrics_list.append(metrics)
@@ -100,7 +100,7 @@ if __name__ == '__main__':
     model_dir = config.PRE_MODEL
     model_fmt = 'Model_fold{}_calibrated.pth'
     k_folds = config.K_FOLDS
-    test_data_path = config.VAL3
+    test_data_path = config.VAL1
     dset_name_prefix = 'Fold'
     save_dir = config.PLOT_DIR
     print(f"Auto k-fold evaluation: model_dir={model_dir}, model_fmt={model_fmt}, k_folds={k_folds}, test_data_path={test_data_path}")

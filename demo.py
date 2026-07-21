@@ -233,15 +233,17 @@ def cross_validate():
         logits, targets = getlogits(model, calib_loader)
 
         T = fit_T(logits, targets.view(-1, 1))
-        print(f"[Fold {fold + 1}] Fitted temperature T = {T.item():.4f}")
+        scaled_logits = logits / T
+        probs = torch.sigmoid(scaled_logits)
 
         threshold = test_T(logits, targets, T)
-        cal_metrics = calculate_metrics(logits, targets, threshold)
+        cal_metrics = calculate_metrics(y_true=targets, y_scores=probs, threshold=threshold)
 
         print(
             f"[Fold {fold + 1}] Calibration: "
-            f"F1={cal_metrics['f1']:.4f}, "
-            f"Threshold={threshold:.4f}"
+            f"F1={cal_metrics['f1_score']:.4f}, "
+            f"Threshold={threshold:.4f}",
+            f"T={T.item():.4f}"
         )
 
         # === Test ===
@@ -252,13 +254,13 @@ def cross_validate():
             f"ACC={test_metrics['accuracy']:.4f}, "
             f"Test AUPRC={test_metrics['pr_auc']:.4f}, "
             f"AUROC={test_metrics['roc_auc']:.4f}, "
-            f"F1={test_metrics['f1']:.4f}"
+            f"F1={test_metrics['f1_score']:.4f}"
         )
 
         torch.save({
             'model': model.state_dict(),
             'T': T.cpu(),
-            'threshold': threshold.cpu()
+            'threshold': float(threshold)
         }, os.path.join(save_dir, f'Model_fold{fold+1}_calibrated.pth'))
 
 if __name__ == '__main__':
