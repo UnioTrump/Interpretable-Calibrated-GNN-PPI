@@ -38,6 +38,7 @@ def test_T(logits, targets, T):
 
     threshold = find_best_threshold_by_f_beta(targets, probs, num_threshold=100)
 
+
     return threshold
 
 class Temp(nn.Module):
@@ -54,12 +55,13 @@ class Temp(nn.Module):
 
 def fit_T(logits, labels):
     scaler = Temp().to(device)
-    optimizer_T = torch.optim.LBFGS([scaler.T], lr=config.LEARNING_RATE, max_iter=50)
+    optimizer_T = torch.optim.LBFGS(scaler.parameters(), lr=config.LEARNING_RATE, max_iter=50)
+    criterion = nn.BCEWithLogitsLoss()
     def closure():
         optimizer_T.zero_grad()
         scaled_logits = scaler(logits)
-        loss = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(0.1))(scaled_logits, labels.float())
+        loss = criterion(scaled_logits, labels.float())
         loss.backward()
-        return loss.detach()
+        return loss
     optimizer_T.step(closure)
     return scaler.T.detach().clone()

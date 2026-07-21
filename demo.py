@@ -220,7 +220,7 @@ def cross_validate():
                 "patience": f"{patience_counter}",
             })
 
-        plot_loss_curves(train_losses, val_losses, save_path=f"plots/loss_curve_fold{fold+1}.png")
+        plot_loss_curves(train_losses, val_losses, save_path=f"{config.PLOT_DIR}/loss_curve_fold{fold+1}.png")
         print(f"Fold {fold+1}: Best AUPRC = {best_auprc:.4f}")
         auprc_scores.append(best_auprc)
 
@@ -235,7 +235,8 @@ def cross_validate():
         T = fit_T(logits, targets.view(-1, 1))
         print(f"[Fold {fold + 1}] Fitted temperature T = {T.item():.4f}")
 
-        cal_metrics, threshold = test_T(logits, targets, T)
+        threshold = test_T(logits, targets, T)
+        cal_metrics = calculate_metrics(logits, targets, threshold)
 
         print(
             f"[Fold {fold + 1}] Calibration: "
