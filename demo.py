@@ -174,7 +174,7 @@ def cross_validate():
         criterion = HybridLoss(
             alpha=config.A,
             beta=config.B,
-            pos_wt=torch.tensor(0.1),
+            pos_wt=config.POS_WEIGHT,
             bce_weight=config.BCE_WEIGHT,
             tversky_weight=config.Tversky_WEIGHT,
             focal_weight=config.FOCAL_WEIGHT,

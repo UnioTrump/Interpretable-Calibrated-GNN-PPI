@@ -19,7 +19,7 @@ def _load_model(model_path):
     return model, T, r
 
 @torch.no_grad()
-def validate(model, val_loader, draw_plots=False, save_dir='./plots', T=None, r=None):
+def validate(model, val_loader, draw_plots=True, save_dir='./plots', T=None, r=None):
     model.eval()
     all_prob, all_target = [], []
     for batch in tqdm(val_loader, desc='Validating'):
@@ -42,7 +42,7 @@ def validate(model, val_loader, draw_plots=False, save_dir='./plots', T=None, r=
     return metrics
 
 
-def test_kfold_models(model_dir, model_fmt, test_data_path, k_folds=5, dset_name_prefix='Fold', save_dir='./plots'):
+def test_kfold_models(model_dir, model_fmt, test_data_path, k_folds=5, save_dir='./plots'):
     """Evaluate k-fold models on a given test set.
 
     Model_fmt can be e.g. 'Model_fold{}.pth' (uncalibrated) or
@@ -88,7 +88,8 @@ def test_kfold_models(model_dir, model_fmt, test_data_path, k_folds=5, dset_name
 
     keys = [k for k in metrics_list[0].keys() if isinstance(metrics_list[0][k], (int, float))]
     for key in keys:
-        mean_metrics[key] = np.mean([m[key] for m in metrics_list])
+        if key != 'threshold':
+            mean_metrics[key] = np.mean([m[key] for m in metrics_list])
     print('\n===== K-Fold Test Results =====')
     for i, m in enumerate(metrics_list, 1):
         print(f'Fold {i}:', {k: m[k] for k in keys})
@@ -97,11 +98,15 @@ def test_kfold_models(model_dir, model_fmt, test_data_path, k_folds=5, dset_name
     return metrics_list, mean_metrics
 
 if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--data_path', type=str, required=True, help='Validation data path')
+    args = parser.parse_args()
+
     model_dir = config.PRE_MODEL
     model_fmt = 'Model_fold{}_calibrated.pth'
     k_folds = config.K_FOLDS
-    test_data_path = config.VAL1
-    dset_name_prefix = 'Fold'
+    test_data_path = args.data_path
     save_dir = config.PLOT_DIR
     print(f"Auto k-fold evaluation: model_dir={model_dir}, model_fmt={model_fmt}, k_folds={k_folds}, test_data_path={test_data_path}")
     test_kfold_models(
@@ -109,6 +114,5 @@ if __name__ == '__main__':
         model_fmt=model_fmt,
         test_data_path=test_data_path,
         k_folds=k_folds,
-        dset_name_prefix=dset_name_prefix,
         save_dir=save_dir
     )
