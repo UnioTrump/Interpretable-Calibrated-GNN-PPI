@@ -3,7 +3,7 @@ import torch
 DEVICE = torch.device('cuda:0')
 SEED = 2025
 
-DATA_DIR = '../gz-data/Train_2066/'
+DATA_DIR = '../gz-data/Train2066/'
 VAL1 = '../gz-data/Test_60/'
 VAL2 = '../gz-data/Test_315/'
 VAL3 = '../gz-data/DSet_72/'
@@ -31,9 +31,9 @@ Tversky_WEIGHT = 0.7
 
 F_BETA = 0.7
 
-PRE_MODEL = '/../gz-data/Pre_model'
-TUNING_MODEL = '/../gz-data/Tuning_model'
-PLOT_DIR = '/../gz-data/plots'
+PRE_MODEL = '../gz-data/Pre_model'
+TUNING_MODEL = '../gz-data/Tuning_model'
+PLOT_DIR = '../gz-data/plots'
 
 T_MAX = EPOCHS
 ETA_MIN = 1e-6

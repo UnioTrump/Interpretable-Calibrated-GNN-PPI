@@ -77,8 +77,6 @@ def test_kfold_models(model_dir, model_fmt, test_data_path, k_folds=5, save_dir=
 
         metrics = validate(model, val_loader, save_dir=os.path.join(save_dir, f'fold{fold}'), T=T, r=r)
         metrics_list.append(metrics)
-        # save_metrics_to_txt(metrics, f'./plots/{dset_name_prefix}{fold}')
-        # print(f'Fold {fold} metrics saved.')
 
     if not metrics_list:
         print('No models were evaluated (no files found).')

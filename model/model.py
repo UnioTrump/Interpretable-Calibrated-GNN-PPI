@@ -93,18 +93,7 @@ class PPI(nn.Module):
                 nn.init.kaiming_normal_(m.weight, nonlinearity='relu')
                 if m.bias is not None:
                     nn.init.zeros_(m.bias)
-
-    def forward(self, ax: Tensor, bx: Tensor, cx: Tensor, dx: Tensor, ex: Tensor, fx: Tensor, adj: SparseTensor):
-        """
-        Parameters:
-            ax: AAINDEX features [N, 567]
-            bx: ESM-C features [N, 1152]
-            cx: DSSP features [N, 14]
-            dx: BLOSUM62 features [N, 20]
-            ex: Pseudo position [N, 1]
-            fx: Residue atomic features [N, 7]
-            adj: Adjacency matrix in COO format, which dim=1
-        """
+    def Fuse(self, ax: Tensor, bx: Tensor, cx: Tensor, dx: Tensor, ex: Tensor, fx: Tensor, adj: SparseTensor):
         row, col, edge_attr = adj.coo()
         edge_index = torch.stack([row, col]).long()
         if len(edge_attr.shape) == 2:
@@ -117,8 +106,30 @@ class PPI(nn.Module):
         wa = self.act(self.aa_encoder(self.aa_norm(ax)))
         w = torch.cat([wa, cdx], dim=1)
         x = self.node_norm(self.gated(w, bx))
+        return x, edge_index, edge_attr
 
+    def Explain(self, x: Tensor, edge_index: Tensor, edge_attr: Tensor):
+        """Second-half forward for explainability: conv layers + classifier only.
+        Args:
+            x: fused node features from Fuse() [N, hid_dim]
+            edge_index: [2, E]
+            edge_attr: [E, 1]
+        """
         for conv in self.convs:
             x = conv(x, edge_index, edge_attr)
-
         return self.classifier(x)
+
+    def forward(self, ax: Tensor, bx: Tensor, cx: Tensor, dx: Tensor, ex: Tensor, fx: Tensor, adj: SparseTensor):
+        """
+        Parameters:
+            ax: AAINDEX features [N, 566]
+            bx: ESM-C features [N, 1152]
+            cx: DSSP features [N, 14]
+            dx: BLOSUM62 features [N, 20]
+            ex: Pseudo position [N, 1]
+            fx: Residue atomic features [N, 7]
+            adj: Adjacency matrix in COO format, which dim=1
+        """
+        x, edge_index, edge_attr = self.Fuse(ax, bx, cx, dx, ex, fx, adj)         # Full
+        return self.Explain(x, edge_index, edge_attr)
+
