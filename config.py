@@ -3,7 +3,7 @@ import torch
 DEVICE = torch.device('cuda:0')
 SEED = 2025
 
-DATA_DIR = '../gz-data/Train2066/'
+DATA_DIR = '../gz-data/Train1958/'
 VAL1 = '../gz-data/Test_60/'
 VAL2 = '../gz-data/Test_315/'
 VAL3 = '../gz-data/DSet_72/'

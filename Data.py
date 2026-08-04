@@ -9,7 +9,6 @@ import os
 from tqdm import tqdm
 import pickle as p
 import numpy as np
-import pandas as pd
 import torch
 from torch.utils.data import Dataset
 import config
@@ -31,7 +30,6 @@ class PPIDataset(Dataset):
                 if len(d['y']) != d['adj'].size(0):
                     continue
                 self.samples.append({
-                    'pid': d['pid'],
                     'chain_id': d.get('chain_id', ''),
                     'esm_c': d['esm_c'],
                     'AA': d['AA'],
@@ -58,8 +56,6 @@ def sparse_collate(_batch):
 
     AA_list, esm_list, BLOSUM_list, dssp_list, y_list, pse_list, res_atom_list = [], [], [], [], [], [], []
     rows, cols, edge_attrs = [], [], []
-    pid_list = []
-    chain_id_list = []
 
     node_offset = 0
     for s in _batch:
@@ -78,8 +74,6 @@ def sparse_collate(_batch):
         BLOSUM_list.append(BLOSUM)
         dssp_list.append(dssp)
         y_list.append(y)
-        pid_list.append(s.get('pid', None))
-        chain_id_list.append(s.get('chain_id', ''))
         pse_list.append(pse)
         res_atom_list.append(res_atom)
 
@@ -104,8 +98,6 @@ def sparse_collate(_batch):
     adj_batch = SparseTensor(row=row_all, col=col_all, value=edge_attr_all, sparse_sizes=(node_offset, node_offset))
 
     return {
-        'pid': pid_list,
-        'chain_id': chain_id_list,
         'esm_c': esm_batch,
         'AA': AA_batch,
         'BLOSUM': BLOSUM_batch,
@@ -122,7 +114,7 @@ class PPIData:
         self.device = config.DEVICE
 
     @staticmethod
-    def load_data(folder_path: str, label_csv: str = None):
+    def load_data(folder_path: str):
         """
         Note:
             There are ordered: aaindex, BLOSUM, dssp, edge, ESM, label
@@ -131,10 +123,6 @@ class PPIData:
         ----------
         folder_path : str
             Directory containing the 8 ordered pickle files.
-        label_csv : str, optional
-            Path to a label CSV with columns PID, Chain_ID, Sequence, Labels.
-            When provided, chain_id is attached to each protein dict.  The CSV
-            rows must align 1:1 with the pickle items (same order, same length).
         """
         file_keywords = ['aaindex', 'BLOSUM', 'dssp', 'edge', 'ESMC', 'label', 'pse_1a','res_atom_1a']
         all_files = os.listdir(folder_path)
@@ -152,21 +140,9 @@ class PPIData:
             with open(file_path, 'rb') as f:
                 data_list.append(p.load(f))
 
-        # --- load chain_id from label CSV (optional) ---
-        chain_ids = None
-        if label_csv is not None:
-            df_label = pd.read_csv(label_csv)
-            if len(df_label) != len(data_list[0]):
-                raise ValueError(
-                    f"label_csv has {len(df_label)} rows but pickle data has "
-                    f"{len(data_list[0])} items — they must align 1:1."
-                )
-            chain_ids = df_label['Chain_ID'].astype(str).tolist()
-
         result_data = []
         for i, _ in enumerate(data_list[0]):
             entry = {
-                'pid': data_list[0][i]['PID'],
                 'AA': data_list[0][i]['AA'],
                 'BLOSUM': data_list[1][i]['x'],
                 'dssp': data_list[2][i]['x'],
@@ -176,8 +152,6 @@ class PPIData:
                 'pse': data_list[6][i]['x'],
                 'res_atom': data_list[7][i]['x'],
             }
-            if chain_ids is not None:
-                entry['chain_id'] = chain_ids[i]
             result_data.append(entry)
         return result_data
 
