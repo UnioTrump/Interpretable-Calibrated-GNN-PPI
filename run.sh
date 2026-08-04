@@ -1,3 +1,5 @@
+# Running This shell file
+
 echo 'Pretrain on Train1958 dataset'
 python demo.py
 
