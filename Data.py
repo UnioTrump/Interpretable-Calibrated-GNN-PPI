@@ -30,7 +30,6 @@ class PPIDataset(Dataset):
                 if len(d['y']) != d['adj'].size(0):
                     continue
                 self.samples.append({
-                    'chain_id': d.get('chain_id', ''),
                     'esm_c': d['esm_c'],
                     'AA': d['AA'],
                     'BLOSUM': d['BLOSUM'],
