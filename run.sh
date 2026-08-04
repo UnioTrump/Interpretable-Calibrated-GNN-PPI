@@ -1,4 +1,4 @@
-echo 'Pretrain on Train2066 dataset'
+echo 'Pretrain on Train1958 dataset'
 python demo.py
 
 echo 'Test on Test60 dataset'
