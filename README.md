@@ -4,6 +4,8 @@ Protein–Protein Interaction (PPI) site prediction at residue level using a Gra
 
 ## Overview
 
+![a](./Fig/Fig1.tif)
+
 This project predicts PPI binding sites via a **GraphGPS** architecture with Transformer convolutions, integrating six complementary feature channels per residue:
 
 | Feature | Dim | Description |
